@@ -105,3 +105,40 @@ func TestEnteringPerformatives(t *testing.T) {
 		}
 	}
 }
+
+func TestLegalNextStatuses(t *testing.T) {
+	// From proposed, full tier, with code: deliberated + in_progress are legal.
+	// (verified is not, because a code change must pass through in_progress first.)
+	got := LegalNextStatuses(manifest.StatusProposed, manifest.TierFull, true)
+	tos := map[manifest.Status]bool{}
+	for _, nt := range got {
+		tos[nt.ToStatus] = true
+	}
+	if !tos[manifest.StatusDeliberated] || !tos[manifest.StatusInProgress] {
+		t.Errorf("proposed/full/code next = %+v, want deliberated+in_progress", got)
+	}
+	if tos[manifest.StatusVerified] {
+		t.Errorf("a code change must not jump proposed->verified: %+v", got)
+	}
+
+	// From proposed, lite tier: deliberated is SKIPPED (illegal); a no-code lite
+	// change may go straight toward verified (skipping in_progress).
+	lite := LegalNextStatuses(manifest.StatusProposed, manifest.TierLite, false)
+	for _, nt := range lite {
+		if nt.ToStatus == manifest.StatusDeliberated {
+			t.Errorf("lite must skip deliberated, got it in %+v", lite)
+		}
+	}
+
+	// LegalNextStatuses is deterministic: the same inputs yield the same slice.
+	a := LegalNextStatuses(manifest.StatusInProgress, manifest.TierFull, true)
+	b := LegalNextStatuses(manifest.StatusInProgress, manifest.TierFull, true)
+	if len(a) != len(b) {
+		t.Fatalf("non-deterministic: len %d vs %d", len(a), len(b))
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			t.Errorf("non-deterministic at %d: %+v vs %+v", i, a[i], b[i])
+		}
+	}
+}

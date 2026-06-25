@@ -1,10 +1,11 @@
-// Package mcpserver wires the 8 tonberry ops onto an official Go MCP SDK stdio
-// server (FORGE Decision 5). list_tools returns the 8-tool manifest; call_tool
-// name-dispatches to the ops layer. The 8 tools (bare names, maker_checker folded
-// into verify as C4):
+// Package mcpserver wires the 11 tonberry ops onto an official Go MCP SDK stdio
+// server (FORGE Decision 5). list_tools returns the 11-tool manifest; call_tool
+// name-dispatches to the ops layer. The 11 tools (bare names, maker_checker
+// folded into verify as C4):
 //
 //	propose, right_size, transition, compose_manifest,
-//	compose_envelope, verify, drift_check, archive
+//	compose_envelope, verify, drift_check, archive,
+//	list, status, assess   (v0.2.0: read-only project-scope observability)
 //
 // Tool namespace at the host is mcp__tonberry__<name> (the .mcp.json server key
 // "tonberry" + the bare tool name); this package registers the bare names.
@@ -25,9 +26,9 @@ import (
 const ServerName = "tonberry"
 
 // Version is the tonberry build version reported to MCP clients.
-const Version = "0.1.0"
+const Version = "0.2.0"
 
-// ToolNames is the canonical, ordered list of the 8 tools.
+// ToolNames is the canonical, ordered list of the 11 tools.
 var ToolNames = []string{
 	"propose",
 	"right_size",
@@ -37,6 +38,9 @@ var ToolNames = []string{
 	"verify",
 	"drift_check",
 	"archive",
+	"list",
+	"status",
+	"assess",
 }
 
 // resolveAbs resolves a change_dir argument to an absolute path, erroring if the
@@ -126,6 +130,30 @@ func New() *mcp.Server {
 		Description: "Snapshot folder -> archive/<date>-<change_id>/, set status=archived + archive_path, compose the promotion-intent INFORM envelope. Requires drift_checked=true. Never calls crystalium.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ops.ArchiveInput) (*mcp.CallToolResult, ops.ArchiveOutput, error) {
 		out, err := ops.Archive(in)
+		return result(err), deref(out), err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "list",
+		Description: "Enumerate change folders under .spectra/changes/ (skips the archive/ snapshot subdir); returns [{change_id,status,tier,drift_checked}] sorted by change_id. Read-only.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ops.ListInput) (*mcp.CallToolResult, ops.ListOutput, error) {
+		out, err := ops.List(in)
+		return result(err), deref(out), err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "status",
+		Description: "For one change_id: the manifest summary + the verify verdict (the SAME 6 checks) + the legal next lifecycle transitions. Read-only.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ops.StatusInput) (*mcp.CallToolResult, ops.StatusOutput, error) {
+		out, err := ops.Status(in)
+		return result(err), deref(out), err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "assess",
+		Description: "Project-scope escalation assessment: aggregate the §4.2 signals (change_count/repo_loc/full_ratio) vs thresholds (N=10/L=50000/R=0.4, overridable) -> recommended_mode advisory|block. Deterministic, read-only; tonberry ships the assessment, the nexus records the flip (eidolons-esl docs/escalation.md).",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ops.AssessInput) (*mcp.CallToolResult, ops.AssessOutput, error) {
+		out, err := ops.Assess(in)
 		return result(err), deref(out), err
 	})
 

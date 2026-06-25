@@ -38,7 +38,9 @@ The only schema tonberry owns is the `status`/`tier` enums in
 
 ---
 
-## The 8 tools (`mcp__tonberry__*`)
+## The 11 tools (`mcp__tonberry__*`)
+
+**Per-change lifecycle (8):**
 
 | Tool | Purpose |
 |------|---------|
@@ -51,8 +53,28 @@ The only schema tonberry owns is the `status`/`tier` enums in
 | `drift_check` | Identity-distinct checker (checker ≠ maker) records the drift verdict; mismatch → `ESCALATE` to `in_progress`; match → `drift_checked=true`. |
 | `archive` | Snapshot folder → `archive/<date>-<change_id>/`, set `status=archived` + `archive_path`, compose the **promotion-intent** ECL envelope. Requires `drift_checked=true`. Never calls CRYSTALIUM. |
 
+**Project-scope observability (3, read-only — v0.2.0):**
+
+| Tool | Purpose |
+|------|---------|
+| `list` | Enumerate change folders under `.spectra/changes/` (skips the `archive/` snapshot subdir); returns `[{change_id,status,tier,drift_checked}]` sorted by `change_id`. |
+| `status` | For one `change_id`: the manifest summary + the **`verify` verdict** (the same six checks — not re-implemented) + the legal next lifecycle transitions. |
+| `assess` | Project-scope **escalation assessment**: aggregate the §4.2 signals (`change_count` / `repo_loc` / `full_ratio`) vs thresholds → `recommended_mode` `advisory`\|`block`. Deterministic. See the escalation lever below. |
+
 `maker_checker` is **not** a separate tool — maker ≠ checker is **check C4 of
 `verify`** (where the normative bash checker keeps it).
+
+### The escalation lever (advisory → forced)
+
+ESL is **advisory by default** (`verify --mode warn`) and **forced on demand**
+(`--mode block`). A project escalates when its project-aggregate right-sizing
+numbers cross mechanical thresholds — `change_count ≥ N`, `repo_loc ≥ L`, or
+`full_ratio ≥ R` (seed defaults `N=10` / `L=50000` / `R=0.4`, all tunable). The
+signals REUSE the §4.2 family (no new vocabulary, mechanical not LLM-judged).
+`assess` computes the aggregate and recommends a mode; tonberry ships the
+**assessment + the lever** — the *flip* is recorded **nexus-side** in
+`eidolons.mcp.lock`, NOT in `esl-1.0.md` (ESL stays opt-in). See
+[`eidolons-esl/docs/escalation.md`](https://github.com/Rynaro/eidolons-esl/blob/main/docs/escalation.md).
 
 ---
 
@@ -89,6 +111,11 @@ tonberry propose      --change_id add-flag --maker vivi --spec_ref spec.md --che
 tonberry right_size   --change_id add-flag --files_touched 1 --rubric_score 5 --tradeoff_present false --write_manifest true
 tonberry transition   --change_id add-flag --to_status in_progress --has_code true --write_manifest true
 tonberry archive      --change_id add-flag
+
+# project-scope observability (read-only)
+tonberry list         --changes_dir .spectra/changes
+tonberry status       --change_id add-flag --mode warn
+tonberry assess       --changes_dir .spectra/changes --repo_loc 60000   # or omit repo_loc to walk the tree
 
 # 3. CI / standalone conformance checker (no MCP host needed)
 tonberry verify .spectra/changes/add-flag --mode block --json
@@ -138,8 +165,9 @@ internal/conformance/      the 6 checks C1–C6 — the bash-parity surface (ver
 internal/manifest/         change.json read/write + change.v1.json validation
 internal/envelope/         ECL sidecar compose (name performatives; no schema re-decl)
 internal/archive/          snapshot + promotion-intent compose
-internal/mcpserver/        stdio server: 8-tool manifest + call dispatch
+internal/mcpserver/        stdio server: 11-tool manifest + call dispatch
 internal/ops/              the op business logic shared by MCP + CLI
+                           (project.go = list/status/assess observability)
 fixtures/                  shared parity corpus (conformant + each-check-failing)
 parity/esl-conformance.sh  vendored normative oracle (canonical: Rynaro/eidolons-esl)
 ```

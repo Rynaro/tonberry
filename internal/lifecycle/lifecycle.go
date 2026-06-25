@@ -68,6 +68,36 @@ func EnteringPerformative(to manifest.Status) string {
 	return ""
 }
 
+// NextTransition is one legal forward (or escalate) edge from a status, named
+// with the ECL performative that enters the target state.
+type NextTransition struct {
+	ToStatus     manifest.Status `json:"to_status"`
+	Performative string          `json:"performative,omitempty"`
+	Reason       string          `json:"reason,omitempty"`
+}
+
+// LegalNextStatuses enumerates the transitions allowed from `from` for a change
+// of tier `tier` with the given hasCode flag. It REUSES the Transition predicate
+// (single-sourced rules) by probing every other status and keeping the allowed
+// ones, in lifecycle order. The result is deterministic.
+func LegalNextStatuses(from manifest.Status, tier manifest.Tier, hasCode bool) []NextTransition {
+	out := []NextTransition{}
+	for _, to := range manifest.Statuses {
+		if to == from {
+			continue
+		}
+		d := Transition(from, to, tier, hasCode)
+		if d.Allowed {
+			out = append(out, NextTransition{
+				ToStatus:     to,
+				Performative: d.NextPerformative,
+				Reason:       d.Reason,
+			})
+		}
+	}
+	return out
+}
+
 // Transition evaluates whether a change at `from` (tier `tier`, hasCode flag)
 // may advance to `to`, applying the §3 skip-rules. It is a pure predicate: it
 // computes the Decision and never mutates anything.

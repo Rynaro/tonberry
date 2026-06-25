@@ -3,6 +3,56 @@
 All notable changes to **tonberry** are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses SemVer.
 
+## [0.2.0] — 2026-06-25
+
+Project-scope lifecycle observability + the escalation assessment. Three new
+read-only ops bring the tool surface to **11 tools**. The `verify` parity surface
+(the six checks C1–C6) is **UNCHANGED** — `internal/conformance`,
+`parity/esl-conformance.sh`, and the fixtures are frozen this phase; the
+byte-identical parity against the vendored bash oracle still holds.
+
+### Added
+
+- **`list`** — enumerate change folders under `.spectra/changes/` (default;
+  `--changes_dir` / `--project_root` overridable). Returns
+  `[{change_id,status,tier,drift_checked}]` read straight from each `change.json`,
+  **sorted by `change_id`** (deterministic). Skips the `archive/` snapshot subdir
+  and any folder without a readable manifest; an absent changes directory lists
+  zero changes (not an error).
+- **`status`** — for one `change_id`: the manifest summary + the **`verify`
+  verdict** (calls the EXISTING `verify` logic — the same six checks, not
+  duplicated) + the legal next lifecycle transitions (from `internal/lifecycle`).
+- **`assess`** — project-scope **escalation assessment** (FORGE Decision 3 /
+  `eidolons-esl` `docs/escalation.md`). Aggregates the §4.2 right-sizing signal
+  family to project scope — `change_count` (number of changes), `full_ratio`
+  (`full`-tier / total), and `repo_loc` (a `--repo_loc` override, else a
+  deterministic text-line walk skipping `.git`, vendor/build dirs, and obvious
+  binaries) — and compares them to thresholds (`--n`/`--l`/`--r`; seed defaults
+  `N=10` / `L=50000` / `R=0.4`, tunable). Returns
+  `{signals, thresholds, tripped[], recommended_mode}`; `recommended_mode` is
+  `block` if ANY threshold trips, else `advisory`. **Deterministic** (property-
+  tested). tonberry ships the assessment + the lever; the *flip recording* is
+  nexus-side (`eidolons.mcp.lock`) and deferred — tonberry never writes a lock.
+- **`lifecycle.LegalNextStatuses`** — enumerates the legal forward/escalate edges
+  from a status (reuses the `Transition` predicate; single-sourced, deterministic),
+  backing the `status` op.
+
+### Changed
+
+- **11 tools** (`tools/list`): the v0.1 eight + `list`, `status`, `assess`. Wired
+  into `internal/mcpserver` (manifest + dispatch), the one-shot CLI
+  (`tonberry list|status|assess ...`), and `internal/ops`.
+- README: **8 tools → 11 tools**; documents the three new ops + the escalation
+  lever/assessment, linking the ESL `docs/escalation.md` concept.
+
+### Unchanged (frozen this phase)
+
+- The `verify` parity surface: `internal/conformance`, `parity/esl-conformance.sh`,
+  and `fixtures/` are untouched; the six checks C1–C6 and the exit-code contract
+  (0/1/3, 2 reserved) are byte-identical to the vendored bash oracle.
+
+[0.2.0]: https://github.com/Rynaro/tonberry/releases/tag/v0.2.0
+
 ## [0.1.0] — 2026-06-25
 
 First release. tonberry is the official, Eidolons-backed implementation of ESL

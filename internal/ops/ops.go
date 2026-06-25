@@ -1,11 +1,12 @@
-// Package ops is the operations layer: the business logic behind the 8 tonberry
+// Package ops is the operations layer: the business logic behind the 11 tonberry
 // tools (FORGE Decision 1). Each op has a typed Input and Output struct so the
 // same logic serves both the stdio MCP (internal/mcpserver) and the one-shot CLI
 // (cmd/tonberry). maker_checker is folded INTO verify as check C4 (Decision 1) —
 // there is no standalone maker_checker op.
 //
-// The 8 ops: Propose, RightSize, Transition, ComposeManifest, ComposeEnvelope,
-// Verify, DriftCheck, Archive.
+// The 11 ops: Propose, RightSize, Transition, ComposeManifest, ComposeEnvelope,
+// Verify, DriftCheck, Archive (the v0.1 lifecycle surface) + List, Status, Assess
+// (the v0.2 read-only project-scope observability, in project.go).
 //
 // ANTI-SCOPE: ops compose/reference; they never re-declare the SPECTRA spec
 // schema, the ECL envelope schema, or CRYSTALIUM layer shapes. Only the ESL-owned

@@ -1,7 +1,7 @@
 // Command tonberry is the dual-mode binary for the official ESL MCP (FORGE
 // Decision 5):
 //
-//	tonberry serve                              -> stdio MCP server (the 8 tools)
+//	tonberry serve                              -> stdio MCP server (the 11 tools)
 //	tonberry verify <change-dir> [--mode m] [--json]
 //	                                            -> CI/standalone conformance checker
 //	                                               (parity-locked to esl-conformance.sh)
@@ -28,7 +28,7 @@ import (
 )
 
 // Version is the tonberry build/release version.
-const Version = "0.1.0"
+const Version = "0.2.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -60,6 +60,12 @@ func main() {
 		runOp(args, opDriftCheck)
 	case "archive":
 		runOp(args, opArchive)
+	case "list":
+		runOp(args, opList)
+	case "status":
+		runOp(args, opStatus)
+	case "assess":
+		runOp(args, opAssess)
 	case "version", "--version":
 		fmt.Println(Version)
 	case "-h", "--help", "help":
@@ -76,7 +82,7 @@ func usage() {
 
 Usage:
   tonberry serve
-      Run the stdio MCP server (the 8 tonberry tools).
+      Run the stdio MCP server (the 11 tonberry tools).
 
   tonberry verify <change-dir> [--mode warn|block] [--json]
       Run the 6 ESL conformance checks C1–C6 against a change folder.
@@ -86,6 +92,18 @@ Usage:
       One-shot CLI for any op. JSON result to stdout. Ops:
         propose right_size transition compose_manifest
         compose_envelope drift_check archive
+        list status assess
+
+  tonberry list   [--changes_dir DIR | --project_root DIR]
+      Enumerate change folders: [{change_id,status,tier,drift_checked}].
+
+  tonberry status --change_id ID [--project_root DIR] [--mode warn|block]
+      Manifest summary + verify verdict + legal next transitions.
+
+  tonberry assess [--project_root DIR] [--changes_dir DIR] [--repo_loc N]
+                  [--n N] [--l L] [--r R]
+      Project-scope escalation assessment (change_count/repo_loc/full_ratio
+      vs thresholds N=10/L=50000/R=0.4) -> recommended_mode advisory|block.
 
   tonberry version | -h | --help
 `)
@@ -262,11 +280,15 @@ func parseFlags(args []string) flagMap {
 	return fm
 }
 
-func (f flagMap) str(k string) string  { return f[k] }
+func (f flagMap) str(k string) string   { return f[k] }
 func (f flagMap) boolean(k string) bool { return f[k] == "true" || f[k] == "1" }
 func (f flagMap) integer(k string) int {
 	n, _ := strconv.Atoi(f[k])
 	return n
+}
+func (f flagMap) float(k string) float64 {
+	v, _ := strconv.ParseFloat(f[k], 64)
+	return v
 }
 
 func runOp(args []string, fn func(flagMap) (any, error)) {
@@ -386,4 +408,33 @@ func opArchive(f flagMap) (any, error) {
 		Date:                    f.str("date"),
 		EnvelopeVersionOverride: f.str("envelope_version"),
 	})
+}
+
+func opList(f flagMap) (any, error) {
+	return ops.List(ops.ListInput{
+		ChangesDir:  f.str("changes_dir"),
+		ProjectRoot: f.str("project_root"),
+	})
+}
+
+func opStatus(f flagMap) (any, error) {
+	return ops.Status(ops.StatusInput{
+		ProjectRoot: f.str("project_root"),
+		ChangesDir:  f.str("changes_dir"),
+		ChangeID:    f.str("change_id"),
+		Mode:        f.str("mode"),
+		HasCode:     f.boolean("has_code"),
+	})
+}
+
+func opAssess(f flagMap) (any, error) {
+	in := ops.AssessInput{
+		ProjectRoot: f.str("project_root"),
+		ChangesDir:  f.str("changes_dir"),
+		RepoLOC:     f.integer("repo_loc"),
+		N:           f.integer("n"),
+		L:           f.integer("l"),
+		R:           f.float("r"),
+	}
+	return ops.Assess(in)
 }
