@@ -1,0 +1,16 @@
+{
+  "envelope_version": "1.0",
+  "from": {
+    "eidolon": "orchestrator",
+    "version": "1.0"
+  },
+  "to": {
+    "eidolon": "kupo",
+    "version": "1.0.0"
+  },
+  "performative": "ACCEPT",
+  "objective": "VIOLATING FIXTURE: ACCEPT is NOT in the closed ECL ten-set (there is no ACCEPT performative — ESL §7.3).",
+  "context_delta": {
+    "summary": "C6 must fail: performative 'ACCEPT' not in ECL closed-10 set."
+  }
+}

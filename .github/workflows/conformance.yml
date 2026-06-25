@@ -1,0 +1,96 @@
+# tonberry CI — go vet + go test + the LOAD-BEARING parity gate + anti-scope.
+#
+# The parity gate (TONBERRY_REQUIRE_PARITY=1) shells the vendored bash oracle
+# (parity/esl-conformance.sh) against every fixture and asserts structural
+# equality with `tonberry verify`. The bash checker is authoritative; a
+# divergence fails CI (a release-blocking reversal condition, ESL §9.3).
+#
+# errexit-safety: GitHub runs `run:` under `bash -e`. Intentionally-non-zero
+# exit codes are captured with `ec=0; cmd || ec=$?` (a bare `cmd; ec=$?` aborts
+# on the intended non-zero before the capture).
+name: conformance
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: vet + test + parity (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      # jq is the bash oracle's hard dependency; bash is preinstalled on both
+      # runners (macos /bin/bash is 3.2 — the oracle is bash-3.2 compatible).
+      - name: Ensure jq present
+        shell: bash
+        run: |
+          if command -v jq >/dev/null 2>&1; then
+            echo "jq present: $(jq --version)"
+          else
+            case "${{ matrix.os }}" in
+              ubuntu-*) sudo apt-get update -qq && sudo apt-get install -y jq ;;
+              macos-*)  brew install jq ;;
+            esac
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test (parity ENFORCED)
+        env:
+          TONBERRY_REQUIRE_PARITY: '1'
+        run: go test ./... -count=1
+
+      # Anti-scope gate (ESL §1.3): tonberry source MUST NOT re-declare the
+      # SPECTRA spec schema, the ECL envelope schema, or CRYSTALIUM layer shapes.
+      # Only the ESL-owned status/tier enums may be declared. The grep targets
+      # FIELD declarations of foreign-owned shapes (struct tags / JSON keys), not
+      # the anti-scope DISCLAIMERS in comments.
+      - name: Anti-scope gate
+        shell: bash
+        run: |
+          rc=0
+          # ECL envelope-owned required fields tonberry must not declare as its own.
+          if grep -rnE '`json:"(message_id|thread_id|parent_id|edge_origin|integrity|trust_level)"' --include='*.go' .; then
+            echo "ANTI-SCOPE FAIL: ECL envelope schema field re-declared" >&2
+            rc=1
+          fi
+          # CRYSTALIUM layer/bitemporal shapes.
+          if grep -rnE '`json:"(t_valid_to|t_valid_from|superseded_by_id|layer)"|crystal\.v1' --include='*.go' .; then
+            echo "ANTI-SCOPE FAIL: CRYSTALIUM layer shape re-declared" >&2
+            rc=1
+          fi
+          # SPECTRA spec-profile schema (GIVEN/WHEN/THEN as a declared format, not a referenced id list).
+          if grep -rnE '`json:"(given|when|then|spec_profile|complexity_matrix)"' --include='*.go' .; then
+            echo "ANTI-SCOPE FAIL: SPECTRA spec schema re-declared" >&2
+            rc=1
+          fi
+          if [ "$rc" -eq 0 ]; then echo "anti-scope ok: no foreign schema re-declaration"; fi
+          exit "$rc"
+
+      # Prove the parity oracle is unmodified vs the canonical eidolons-esl
+      # checker semantics: it must still drive a RED on a known violation and a
+      # GREEN on a conformant fixture (a sanity tripwire complementing the Go parity test).
+      - name: Oracle tripwire (RED on violation, GREEN on conformant)
+        shell: bash
+        run: |
+          rc=0
+          ec=0
+          bash parity/esl-conformance.sh fixtures/failing/maker-equals-checker --mode block >/dev/null 2>&1 || ec=$?
+          if [ "$ec" -ne 3 ]; then echo "oracle should BLOCK maker-equals-checker (got $ec)" >&2; rc=1; fi
+          ec=0
+          bash parity/esl-conformance.sh fixtures/conformant/lite-add-flag --mode block >/dev/null 2>&1 || ec=$?
+          if [ "$ec" -ne 0 ]; then echo "oracle should PASS lite-add-flag (got $ec)" >&2; rc=1; fi
+          [ "$rc" -eq 0 ] && echo "oracle tripwire ok"
+          exit "$rc"

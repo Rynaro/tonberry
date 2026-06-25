@@ -1,0 +1,5 @@
+# SPECTRA owns this artifact's schema — see SPECTRA spec-profile.v1.json.
+# This file is the SPECTRA-owned slot for the full-tier change; ESL only
+# requires that spec.{md,yaml} be present for tier=full.
+spectra_owned_slot: true
+change_id: full-new-subsystem

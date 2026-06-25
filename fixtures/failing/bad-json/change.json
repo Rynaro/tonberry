@@ -1,0 +1,12 @@
+{
+  "esl_version": "1.0",
+  "change_id": "bad-json",
+  "status": "proposed",
+  "tier": "trivial",
+  "maker": "kupo",
+  "checker": "vigil"
+  "acceptance_checks": [
+    { "id": "AC-1", "verify_method": "n/a — violating fixture (missing comma -> invalid JSON)" }
+  ],
+  "spec_ref": null
+}

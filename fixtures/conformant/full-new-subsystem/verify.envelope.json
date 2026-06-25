@@ -1,0 +1,42 @@
+{
+  "envelope_version": "1.0",
+  "message_id": "00000000-0000-4000-8000-00000000v003",
+  "thread_id": "00000000-0000-4000-8000-00000000t003",
+  "parent_id": "00000000-0000-4000-8000-00000000p003",
+  "from": {
+    "eidolon": "vigil",
+    "version": "1.0.0"
+  },
+  "to": {
+    "eidolon": "orchestrator",
+    "version": "1.0"
+  },
+  "performative": "INFORM",
+  "edge_origin": "roster",
+  "objective": "verify_pass over AC-1/AC-2 + drift_check vs Semantic spec. Checker (vigil) != maker (vivi).",
+  "artifact": {
+    "kind": "root-cause-report",
+    "schema_version": "1.0",
+    "path": "change.json",
+    "sha256": "PARENT_FILLS_SHA256",
+    "size_bytes": "PARENT_FILLS_SIZE"
+  },
+  "context_delta": {
+    "token_budget": 2000,
+    "tokens_used": 120,
+    "input_handles": ["spec.md", "spec.yaml"],
+    "summary": "verify_pass + drift_checked=true; maker=vivi, checker=vigil (distinct); MAY enter archived."
+  },
+  "constraints": {
+    "trust_level": "standard"
+  },
+  "integrity": {
+    "method": "sha256",
+    "value": "PARENT_FILLS_SHA256"
+  },
+  "trace": {
+    "ts": "2026-06-24T11:00:00Z",
+    "host": "claude-code",
+    "tier": "standard"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "esl_version": "1.0",
+  "change_id": "illegal-status",
+  "status": "in-review",
+  "tier": "lite",
+  "maker": "vivi",
+  "checker": "kupo-verifier",
+  "acceptance_checks": [
+    { "id": "AC-1", "verify_method": "n/a — violating fixture (C2a: status not in the enum)" }
+  ],
+  "spec_ref": "spec.md"
+}

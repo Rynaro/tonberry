@@ -1,0 +1,42 @@
+{
+  "envelope_version": "1.0",
+  "message_id": "00000000-0000-4000-8000-00000000d001",
+  "thread_id": "00000000-0000-4000-8000-00000000t001",
+  "parent_id": null,
+  "from": {
+    "eidolon": "orchestrator",
+    "version": "1.0"
+  },
+  "to": {
+    "eidolon": "kupo",
+    "version": "1.0.0"
+  },
+  "performative": "DELEGATE",
+  "edge_origin": "roster",
+  "objective": "Fix a single typo in README.md; trivial tier, no spec.",
+  "artifact": {
+    "kind": "edit-proposal",
+    "schema_version": "1.0",
+    "path": "change.json",
+    "sha256": "PARENT_FILLS_SHA256",
+    "size_bytes": "PARENT_FILLS_SIZE"
+  },
+  "context_delta": {
+    "token_budget": 1000,
+    "tokens_used": 40,
+    "input_handles": [],
+    "summary": "Trivial typo fix routed to Kupo; no spec required (ESL trivial tier)."
+  },
+  "constraints": {
+    "trust_level": "standard"
+  },
+  "integrity": {
+    "method": "sha256",
+    "value": "PARENT_FILLS_SHA256"
+  },
+  "trace": {
+    "ts": "2026-06-24T09:00:00Z",
+    "host": "claude-code",
+    "tier": "standard"
+  }
+}

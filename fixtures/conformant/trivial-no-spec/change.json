@@ -1,0 +1,12 @@
+{
+  "esl_version": "1.0",
+  "change_id": "trivial-no-spec",
+  "status": "proposed",
+  "tier": "trivial",
+  "maker": "kupo",
+  "checker": "vigil",
+  "acceptance_checks": [
+    { "id": "AC-1", "verify_method": "grep: fix present" }
+  ],
+  "spec_ref": null
+}

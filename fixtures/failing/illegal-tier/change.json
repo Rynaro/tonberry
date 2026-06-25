@@ -1,0 +1,12 @@
+{
+  "esl_version": "1.0",
+  "change_id": "illegal-tier",
+  "status": "proposed",
+  "tier": "medium",
+  "maker": "vivi",
+  "checker": "vigil",
+  "acceptance_checks": [
+    { "id": "AC-1", "verify_method": "n/a — violating fixture (C2b: tier not in the enum)" }
+  ],
+  "spec_ref": null
+}

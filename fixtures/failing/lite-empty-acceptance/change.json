@@ -1,0 +1,10 @@
+{
+  "esl_version": "1.0",
+  "change_id": "lite-empty-acceptance",
+  "status": "proposed",
+  "tier": "lite",
+  "maker": "vivi",
+  "checker": "kupo-verifier",
+  "acceptance_checks": [],
+  "spec_ref": "spec.md"
+}

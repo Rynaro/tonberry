@@ -1,0 +1,42 @@
+{
+  "envelope_version": "1.0",
+  "message_id": "00000000-0000-4000-8000-00000000p002",
+  "thread_id": "00000000-0000-4000-8000-00000000t002",
+  "parent_id": null,
+  "from": {
+    "eidolon": "spectra",
+    "version": "4.9.1"
+  },
+  "to": {
+    "eidolon": "vivi",
+    "version": "1.0.0"
+  },
+  "performative": "PROPOSE",
+  "edge_origin": "roster",
+  "objective": "Hand off the lite one-page spec for the --dry-run flag to the maker.",
+  "artifact": {
+    "kind": "spec",
+    "schema_version": "1.0",
+    "path": "spec.md",
+    "sha256": "PARENT_FILLS_SHA256",
+    "size_bytes": "PARENT_FILLS_SIZE"
+  },
+  "context_delta": {
+    "token_budget": 2000,
+    "tokens_used": 110,
+    "input_handles": [],
+    "summary": "Lite tier: one-page spec for a --dry-run flag; deliberated skipped; path 0->2->3->4."
+  },
+  "constraints": {
+    "trust_level": "standard"
+  },
+  "integrity": {
+    "method": "sha256",
+    "value": "PARENT_FILLS_SHA256"
+  },
+  "trace": {
+    "ts": "2026-06-24T10:00:00Z",
+    "host": "claude-code",
+    "tier": "standard"
+  }
+}

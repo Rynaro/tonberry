@@ -1,0 +1,13 @@
+{
+  "esl_version": "1.0",
+  "change_id": "trivial-typo-fix",
+  "status": "verified",
+  "tier": "trivial",
+  "maker": "kupo",
+  "checker": "vigil",
+  "acceptance_checks": [
+    { "id": "AC-1", "verify_method": "grep: corrected spelling present in README.md" }
+  ],
+  "spec_ref": null,
+  "created_at": "2026-06-24T09:00:00Z"
+}

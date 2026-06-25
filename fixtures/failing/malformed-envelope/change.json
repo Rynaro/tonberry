@@ -1,0 +1,12 @@
+{
+  "esl_version": "1.0",
+  "change_id": "malformed-envelope",
+  "status": "proposed",
+  "tier": "trivial",
+  "maker": "kupo",
+  "checker": "vigil",
+  "acceptance_checks": [
+    { "id": "AC-1", "verify_method": "n/a — violating fixture (C6: envelope is not valid JSON)" }
+  ],
+  "spec_ref": null
+}

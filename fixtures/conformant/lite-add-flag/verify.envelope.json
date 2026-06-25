@@ -1,0 +1,42 @@
+{
+  "envelope_version": "1.0",
+  "message_id": "00000000-0000-4000-8000-00000000v002",
+  "thread_id": "00000000-0000-4000-8000-00000000t002",
+  "parent_id": "00000000-0000-4000-8000-00000000p002",
+  "from": {
+    "eidolon": "kupo-verifier",
+    "version": "1.0.0"
+  },
+  "to": {
+    "eidolon": "orchestrator",
+    "version": "1.0"
+  },
+  "performative": "INFORM",
+  "edge_origin": "roster",
+  "objective": "verify_pass: --dry-run flag satisfies AC-1. Checker (kupo-verifier) != maker (vivi).",
+  "artifact": {
+    "kind": "edit-proposal",
+    "schema_version": "1.0",
+    "path": "change.json",
+    "sha256": "PARENT_FILLS_SHA256",
+    "size_bytes": "PARENT_FILLS_SIZE"
+  },
+  "context_delta": {
+    "token_budget": 1000,
+    "tokens_used": 60,
+    "input_handles": ["spec.md"],
+    "summary": "verify_pass over AC-1; maker=vivi, checker=kupo-verifier (distinct identities)."
+  },
+  "constraints": {
+    "trust_level": "standard"
+  },
+  "integrity": {
+    "method": "sha256",
+    "value": "PARENT_FILLS_SHA256"
+  },
+  "trace": {
+    "ts": "2026-06-24T10:30:00Z",
+    "host": "claude-code",
+    "tier": "standard"
+  }
+}

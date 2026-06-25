@@ -1,0 +1,12 @@
+{
+  "esl_version": "1.0",
+  "change_id": "lite-missing-spec",
+  "status": "proposed",
+  "tier": "lite",
+  "maker": "vivi",
+  "checker": "vigil",
+  "acceptance_checks": [
+    { "id": "AC-1", "verify_method": "n/a — violating fixture" }
+  ],
+  "spec_ref": "spec.md"
+}

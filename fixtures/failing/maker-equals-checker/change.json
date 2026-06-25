@@ -1,0 +1,12 @@
+{
+  "esl_version": "1.0",
+  "change_id": "maker-equals-checker",
+  "status": "verified",
+  "tier": "trivial",
+  "maker": "vivi",
+  "checker": "vivi",
+  "acceptance_checks": [
+    { "id": "AC-1", "verify_method": "n/a — violating fixture" }
+  ],
+  "spec_ref": null
+}
