@@ -48,12 +48,89 @@ const (
 // Tiers is the closed tier enum.
 var Tiers = []Tier{TierTrivial, TierLite, TierFull}
 
-// AcceptanceCheck carries a GIVEN/WHEN/THEN id that points INTO spec_ref plus an
-// optional verify-method reference. ESL does NOT re-declare SPECTRA's format; it
-// carries an id list that references it (ESL v1.0 §2.4).
+// AcceptanceCheck carries one acceptance criterion. Per ESL §2.4–§2.5
+// (schema/change.v1.json: acceptance_checks[].items is a
+// oneOf:[string, object]), an item is EITHER:
+//
+//   - a plain string (Raw set; the minimal/legacy free-form form), OR
+//   - a structured object {id, verify_method} plus the OPTIONAL EARS fields
+//     {given, when, then} (ESL §2.5).
+//
+// ESL does NOT re-declare SPECTRA's GIVEN/WHEN/THEN format; the id points INTO
+// spec_ref and the EARS fields are a thin reference shape (advisory-linted by C7).
+//
+// Raw is mutually exclusive with the object fields: when Raw != "" the item
+// round-trips as a JSON string; otherwise it round-trips as an object.
 type AcceptanceCheck struct {
-	ID           string `json:"id"`
+	// Raw holds the plain-string form. Empty for the object form.
+	Raw string `json:"-"`
+
+	ID           string `json:"id,omitempty"`
+	Given        string `json:"given,omitempty"`
+	When         string `json:"when,omitempty"`
+	Then         string `json:"then,omitempty"`
 	VerifyMethod string `json:"verify_method,omitempty"`
+}
+
+// acceptanceCheckObj is the object-form alias used to (un)marshal without
+// recursing through AcceptanceCheck's custom methods.
+type acceptanceCheckObj struct {
+	ID           string `json:"id,omitempty"`
+	Given        string `json:"given,omitempty"`
+	When         string `json:"when,omitempty"`
+	Then         string `json:"then,omitempty"`
+	VerifyMethod string `json:"verify_method,omitempty"`
+}
+
+// UnmarshalJSON accepts the oneOf:[string, object] acceptance_checks item shape.
+// A JSON string lands in Raw; a JSON object decodes the id + optional EARS fields.
+func (a *AcceptanceCheck) UnmarshalJSON(data []byte) error {
+	trimmed := []byte(data)
+	// Distinguish a JSON string from an object by the first non-space byte.
+	for len(trimmed) > 0 && (trimmed[0] == ' ' || trimmed[0] == '\t' || trimmed[0] == '\n' || trimmed[0] == '\r') {
+		trimmed = trimmed[1:]
+	}
+	if len(trimmed) > 0 && trimmed[0] == '"' {
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		*a = AcceptanceCheck{Raw: s}
+		return nil
+	}
+	var obj acceptanceCheckObj
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return err
+	}
+	*a = AcceptanceCheck{
+		ID:           obj.ID,
+		Given:        obj.Given,
+		When:         obj.When,
+		Then:         obj.Then,
+		VerifyMethod: obj.VerifyMethod,
+	}
+	return nil
+}
+
+// MarshalJSON renders the plain-string form (Raw) as a JSON string and the
+// object form as a JSON object, preserving the oneOf shape on round-trip.
+func (a AcceptanceCheck) MarshalJSON() ([]byte, error) {
+	if a.Raw != "" {
+		return json.Marshal(a.Raw)
+	}
+	return json.Marshal(acceptanceCheckObj{
+		ID:           a.ID,
+		Given:        a.Given,
+		When:         a.When,
+		Then:         a.Then,
+		VerifyMethod: a.VerifyMethod,
+	})
+}
+
+// IsEARS reports whether the item is in the EARS form (object declaring at least
+// one of given/when/then) — the C7 advisory lint trigger (ESL §2.5).
+func (a AcceptanceCheck) IsEARS() bool {
+	return a.Raw == "" && (a.Given != "" || a.When != "" || a.Then != "")
 }
 
 // Change is the in-memory shape of change.json. Field tags mirror
@@ -192,8 +269,11 @@ func Validate(c *Change) []string {
 		errs = append(errs, "acceptance_checks is required")
 	} else {
 		for i, ac := range c.AcceptanceChecks {
-			if ac.ID == "" {
-				errs = append(errs, fmt.Sprintf("acceptance_checks[%d].id is required and non-empty", i))
+			// Plain-string items (Raw set) carry no id — that is the legal
+			// oneOf:[string,...] form (ESL §2.5). Only the object form requires a
+			// non-empty id (schema/change.v1.json: required ["id"]).
+			if ac.Raw == "" && ac.ID == "" {
+				errs = append(errs, fmt.Sprintf("acceptance_checks[%d].id is required and non-empty (object form)", i))
 			}
 		}
 	}

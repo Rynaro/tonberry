@@ -47,13 +47,62 @@ func checkFixture(t *testing.T, group, name string, mode Mode) Report {
 }
 
 func TestConformantExitZeroInBlock(t *testing.T) {
-	for _, name := range []string{"trivial-typo-fix", "lite-add-flag", "full-new-subsystem", "trivial-no-spec"} {
+	for _, name := range []string{"trivial-typo-fix", "lite-add-flag", "full-new-subsystem", "trivial-no-spec", "ears-complete", "lite-ears-complete"} {
 		rep := checkFixture(t, "conformant", name, ModeBlock)
 		if rep.ExitCode != 0 {
 			t.Errorf("conformant %s: exit %d, want 0", name, rep.ExitCode)
 		}
 		if rep.HasFail {
 			t.Errorf("conformant %s: unexpected fail finding(s): %+v", name, rep.Results)
+		}
+	}
+}
+
+// TestC7EARSComplete: an EARS-complete item (all 4 fields) → C7 ok, exit 0.
+func TestC7EARSComplete(t *testing.T) {
+	rep := checkFixture(t, "conformant", "ears-complete", ModeBlock)
+	r, ok := findResult(rep, "C7")
+	if !ok {
+		t.Fatalf("ears-complete: expected a C7 finding, got %+v", rep.Results)
+	}
+	if r.Level != "SHOULD" {
+		t.Errorf("ears-complete: C7 level = %q, want SHOULD", r.Level)
+	}
+	if r.Status != "ok" {
+		t.Errorf("ears-complete: C7 status = %q, want ok", r.Status)
+	}
+	if rep.ExitCode != 0 {
+		t.Errorf("ears-complete block exit = %d, want 0", rep.ExitCode)
+	}
+}
+
+// TestC7EARSMissingFieldAdvisory is the LOAD-BEARING advisory proof: a genuine
+// C7 fail must NOT escalate the exit code — exit 0 even in --mode block, because
+// C7 is SHOULD-level and only the MUST checks C1–C6 block.
+func TestC7EARSMissingFieldAdvisory(t *testing.T) {
+	rep := checkFixture(t, "failing", "ears-missing-field", ModeBlock)
+	r, ok := findResult(rep, "C7")
+	if !ok || r.Status != "fail" {
+		t.Fatalf("ears-missing-field: expected C7 fail, got %+v", rep.Results)
+	}
+	if r.Level != "SHOULD" {
+		t.Errorf("ears-missing-field: C7 level = %q, want SHOULD", r.Level)
+	}
+	if rep.ExitCode != 0 {
+		t.Errorf("ADVISORY VIOLATION: ears-missing-field block exit = %d, want 0 (C7 must never block)", rep.ExitCode)
+	}
+	if !rep.HasFail {
+		t.Errorf("ears-missing-field: HasFail should be true (the C7 warning is still reported)")
+	}
+}
+
+// TestC7PlainStringNoFinding: plain-string and minimal {id,verify_method} items
+// produce NO C7 finding (existing examples stay clean).
+func TestC7PlainStringNoFinding(t *testing.T) {
+	for _, name := range []string{"trivial-typo-fix", "lite-add-flag", "full-new-subsystem"} {
+		rep := checkFixture(t, "conformant", name, ModeBlock)
+		if _, has := findResult(rep, "C7"); has {
+			t.Errorf("%s: expected NO C7 finding (minimal-object acceptance form), got %+v", name, rep.Results)
 		}
 	}
 }

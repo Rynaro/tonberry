@@ -3,6 +3,44 @@
 All notable changes to **tonberry** are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses SemVer.
 
+## [0.3.0] — 2026-06-25
+
+EARS-structured acceptance checks + the advisory **C7** lint, re-vendored and
+re-proven byte-identical against the bash oracle. The parity surface CHANGES this
+phase (C7 is added to both implementations); the load-bearing parity invariant
+(FORGE Decision 2) is re-proven with the new EARS fixtures in both directions.
+Tool surface stays at **11 tools** (no new op — C7 rides `verify`).
+
+### Added
+
+- **Optional EARS acceptance form** — `acceptance_checks[]` items are now
+  `oneOf:[string, object]` (ESL §2.5). An item MAY be a plain string OR a
+  structured object; a structured object MAY adopt the EARS form
+  `{id, given, when, then, verify_method}`. `internal/manifest.AcceptanceCheck`
+  gained custom `MarshalJSON`/`UnmarshalJSON` so all three forms (plain-string,
+  minimal `{id, verify_method}`, full EARS) round-trip; `Validate` accepts the
+  plain-string form (no `id`); new `AcceptanceCheck.IsEARS()` predicate.
+- **Check C7 (SHOULD, advisory)** in `internal/conformance` — a faithful Go port
+  of the bash oracle's C7. For any EARS-form acceptance item (an object declaring
+  ≥1 of `given`/`when`/`then`), it warns if any of `given`/`when`/`then`/
+  `verify_method` is missing or empty. **C7 NEVER changes the exit code** — a
+  C7-only failure stays exit 0 even under `--mode block` (only the MUST checks
+  C1–C6 block). Plain-string and minimal-object items produce no C7 finding.
+- **Parity corpus** — new EARS fixtures under `fixtures/`: `conformant/ears-complete`
+  and `conformant/lite-ears-complete` (C7 `ok`), and `failing/ears-missing-field`
+  (C7 `fail` + **exit 0** in block — the advisory proof). The parity test now
+  covers C7 in BOTH directions, byte-identical to the bash oracle.
+
+### Changed
+
+- **Re-vendored the oracle** — `parity/esl-conformance.sh` re-synced from the
+  UPDATED `eidolons-esl/conformance/esl-conformance.sh` (the deliberate, controlled
+  reversal-condition re-sync per ESL §9.3). The canonical-source header note is
+  preserved.
+- `verify`'s check family is now **C1–C6 (MUST) + C7 (SHOULD)**; the README +
+  fixtures README document the EARS form and the advisory exit-code contract. The
+  byte-identical parity against the vendored bash oracle still holds (incl. C7).
+
 ## [0.2.0] — 2026-06-25
 
 Project-scope lifecycle observability + the escalation assessment. Three new

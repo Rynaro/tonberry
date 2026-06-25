@@ -15,8 +15,10 @@ divergence the bash checker is authoritative.
 | `lite-add-flag/` | eidolons-esl `examples/` | lite tier, spec.md + acceptance_checks |
 | `full-new-subsystem/` | eidolons-esl `examples/` | full tier, spec.{md,yaml}, archived + drift_checked |
 | `trivial-no-spec/` | eidolons-esl `conformance/tests/` | trivial bypass: no spec is NOT a violation |
+| `ears-complete/` | eidolons-esl `conformance/tests/` | EARS-complete acceptance item (all 4 fields) → C7 `ok` (advisory) |
+| `lite-ears-complete/` | eidolons-esl `examples/` | worked EARS-form change; C7 `ok` |
 
-## `failing/` — hard violation, exit 3 in `--mode block`
+## `failing/` — hard violation, exit 3 in `--mode block` (EXCEPT the C7 advisory case)
 
 | Fixture | Check | Source | Why |
 |---|---|---|---|
@@ -30,6 +32,7 @@ divergence the bash checker is authoritative.
 | `lite-empty-acceptance/` | C3 | tonberry | lite tier, spec.md present, `acceptance_checks: []` |
 | `bad-performative/` | C6 | tonberry | sidecar performative `ACCEPT` not in the closed ECL ten-set |
 | `malformed-envelope/` | C6 | tonberry | `*.envelope.json` sidecar is not valid JSON (the C6 well-formed branch) |
+| `ears-missing-field/` | C7 | eidolons-esl `conformance/tests/` | EARS item missing `then` → C7 `fail` in `--json`, YET **exit 0** in block mode (C7 is SHOULD-level/advisory; only C1–C6 block — the load-bearing advisory proof) |
 
 The eidolons-esl fixtures are copied verbatim (canonical source =
 `Rynaro/eidolons-esl`); re-sync them on an ESL checker/example revision — a

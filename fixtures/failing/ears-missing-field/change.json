@@ -1,0 +1,17 @@
+{
+  "esl_version": "1.0",
+  "change_id": "ears-missing-field",
+  "status": "proposed",
+  "tier": "lite",
+  "maker": "vivi",
+  "checker": "vigil",
+  "acceptance_checks": [
+    {
+      "id": "AC-1",
+      "given": "the CLI is invoked with the new --dry-run flag",
+      "when": "the command would otherwise mutate the working tree",
+      "verify_method": "bats: --dry-run flag prints plan and exits 0 without writing"
+    }
+  ],
+  "spec_ref": "spec.md"
+}

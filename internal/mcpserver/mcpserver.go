@@ -111,7 +111,7 @@ func New() *mcp.Server {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "verify",
-		Description: "Run the 6 mechanical ESL conformance checks C1–C6 (incl. maker!=checker as C4). Parity-locked to esl-conformance.sh. mode=warn|block; exit_code 0/3.",
+		Description: "Run the 6 MUST ESL conformance checks C1–C6 (incl. maker!=checker as C4) plus the SHOULD advisory C7 (EARS acceptance lint; never blocks). Parity-locked to esl-conformance.sh. mode=warn|block; exit_code 0/3.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ops.VerifyInput) (*mcp.CallToolResult, ops.VerifyOutput, error) {
 		out, err := ops.Verify(in, resolveAbs)
 		return result(err), deref(out), err
@@ -143,7 +143,7 @@ func New() *mcp.Server {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "status",
-		Description: "For one change_id: the manifest summary + the verify verdict (the SAME 6 checks) + the legal next lifecycle transitions. Read-only.",
+		Description: "For one change_id: the manifest summary + the verify verdict (the SAME C1–C6 + advisory C7) + the legal next lifecycle transitions. Read-only.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ops.StatusInput) (*mcp.CallToolResult, ops.StatusOutput, error) {
 		out, err := ops.Status(in)
 		return result(err), deref(out), err

@@ -49,7 +49,7 @@ The only schema tonberry owns is the `status`/`tier` enums in
 | `transition` | Advance `status` honoring §3 skip-rules (lite/trivial skip `deliberated`; code-states require code; `archived` requires `drift_checked`). |
 | `compose_manifest` | Write/validate `change.json` against the ESL-owned `change.v1.json` (references `spec_ref`; never inlines the SPECTRA schema). |
 | `compose_envelope` | Emit an ECL sidecar `*.envelope.json` naming the §7.2 performative for a transition. |
-| `verify` | Run the six mechanical conformance checks **C1–C6** (incl. maker≠checker as C4). `--mode warn\|block`, `--json`. **Parity-locked** to `esl-conformance.sh`. |
+| `verify` | Run the six MUST conformance checks **C1–C6** (incl. maker≠checker as C4) plus the SHOULD advisory **C7** (EARS acceptance lint). `--mode warn\|block`, `--json`. **Parity-locked** to `esl-conformance.sh`. C7 is advisory — it never changes the exit code (only C1–C6 block). |
 | `drift_check` | Identity-distinct checker (checker ≠ maker) records the drift verdict; mismatch → `ESCALATE` to `in_progress`; match → `drift_checked=true`. |
 | `archive` | Snapshot folder → `archive/<date>-<change_id>/`, set `status=archived` + `archive_path`, compose the **promotion-intent** ECL envelope. Requires `drift_checked=true`. Never calls CRYSTALIUM. |
 
@@ -63,6 +63,18 @@ The only schema tonberry owns is the `status`/`tier` enums in
 
 `maker_checker` is **not** a separate tool — maker ≠ checker is **check C4 of
 `verify`** (where the normative bash checker keeps it).
+
+### EARS acceptance form + the advisory C7 lint (v0.3.0)
+
+`acceptance_checks[]` items are `oneOf:[string, object]` (ESL §2.5). An item MAY
+be a plain string (minimal/free-form) OR a structured object; a structured object
+MAY adopt the optional **EARS** form (`{id, given, when, then, verify_method}` —
+*WHEN [event] THE SYSTEM SHALL [action]*). `verify`'s check **C7** advisory-lints
+EARS-form items (those declaring ≥1 of `given`/`when`/`then`) for completeness:
+it warns if any of `given`/`when`/`then`/`verify_method` is missing or empty. C7
+is **SHOULD-level** — a C7-only failure stays **exit 0 even under `--mode block`**
+(only C1–C6 block). Plain-string and minimal `{id, verify_method}` items produce
+**no** C7 finding. C7 is byte-identically parity-locked to the bash oracle.
 
 ### The escalation lever (advisory → forced)
 

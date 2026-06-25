@@ -277,17 +277,64 @@ while [ "$ei" -lt "${#ENVELOPES[@]}" ]; do
   ei=$((ei + 1))
 done
 
+# -- Check 7: EARS-structured acceptance_checks are complete (SHOULD) -------- #
+#
+# C7 is ADVISORY (SHOULD-level). An acceptance_checks item MAY be EITHER a plain
+# string (legacy/minimal — no C7 finding) OR a structured object. An item is in
+# the EARS form iff it is an object that declares at least one EARS-specific key
+# (given|when|then). For each EARS item, warn if any of given|when|then|
+# verify_method is absent or not a non-empty string. A C7 fail NEVER changes the
+# exit code (only the MUST checks C1–C6 can block) — EARS is opt-in polish.
+if [ "$CHANGE_JSON_OK" -eq 1 ] && [ "$M_AC_COUNT" -gt 0 ]; then
+  aci=0
+  while [ "$aci" -lt "$M_AC_COUNT" ]; do
+    # Is item aci an EARS-structured object (declares given|when|then)?
+    is_ears="$(jq -r --argjson i "$aci" '
+      (.acceptance_checks[$i]) as $it
+      | if ($it | type) == "object"
+          and (($it | has("given")) or ($it | has("when")) or ($it | has("then")))
+        then "1" else "0" end
+    ' "$CHANGE_JSON" 2>/dev/null)"
+    if [ "$is_ears" = "1" ]; then
+      # Identify the item (its id, if any) for a readable reason.
+      ac_id="$(jq -r --argjson i "$aci" '.acceptance_checks[$i].id // empty' "$CHANGE_JSON" 2>/dev/null)"
+      [ -n "$ac_id" ] || ac_id="#$aci"
+      # Which of the four EARS fields are missing or not a non-empty string?
+      missing="$(jq -r --argjson i "$aci" '
+        (.acceptance_checks[$i]) as $it
+        | ["given","when","then","verify_method"]
+        | map(select((($it[.]? ) | (type == "string" and length > 0)) | not))
+        | join(",")
+      ' "$CHANGE_JSON" 2>/dev/null)"
+      if [ -n "$missing" ]; then
+        esl_record "C7" "SHOULD" "fail" "ears_acceptance_complete" \
+          "$ac_id: EARS item missing/empty: $missing"
+      else
+        esl_record "C7" "SHOULD" "ok" "ears_acceptance_complete" "$ac_id"
+      fi
+    fi
+    aci=$((aci + 1))
+  done
+fi
+
 # -- summarise -------------------------------------------------------------- #
 
+# HAS_FAIL reflects any fail (used only for the human "warnings present" line).
+# BLOCKING_FAIL is the exit-code lever: ONLY MUST-level fails can block. A
+# SHOULD-level fail (C7 — advisory EARS lint) never changes the exit code.
 HAS_FAIL=0
+BLOCKING_FAIL=0
 ri=0
 while [ "$ri" -lt "$N_RESULTS" ]; do
-  if [ "${RSTATUSES[$ri]}" = "fail" ]; then HAS_FAIL=1; fi
+  if [ "${RSTATUSES[$ri]}" = "fail" ]; then
+    HAS_FAIL=1
+    if [ "${RLEVELS[$ri]}" = "MUST" ]; then BLOCKING_FAIL=1; fi
+  fi
   ri=$((ri + 1))
 done
 
 EXIT_CODE=0
-if [ "$HAS_FAIL" -eq 1 ] && [ "$MODE" = "block" ]; then
+if [ "$BLOCKING_FAIL" -eq 1 ] && [ "$MODE" = "block" ]; then
   EXIT_CODE=3
 fi
 

@@ -43,6 +43,70 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
+// TestAcceptanceCheckOneOfRoundTrip exercises the oneOf:[string, object]
+// acceptance_checks item shape (ESL §2.5): plain-string, minimal-object, and
+// EARS-object items must all round-trip through Read/Write unchanged.
+func TestAcceptanceCheckOneOfRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	specRef := "spec.md"
+	in := &Change{
+		ESLVersion: ESLVersion,
+		ChangeID:   "oneof-round-trip",
+		Status:     StatusProposed,
+		Tier:       TierLite,
+		Maker:      "vivi",
+		Checker:    "vigil",
+		AcceptanceChecks: []AcceptanceCheck{
+			{Raw: "AC-0: plain string criterion"},
+			{ID: "AC-1", VerifyMethod: "bats: x"},
+			{ID: "AC-2", Given: "g", When: "w", Then: "t", VerifyMethod: "bats: y"},
+		},
+		SpecRef: &specRef,
+	}
+	if _, err := Write(dir, in); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.AcceptanceChecks) != 3 {
+		t.Fatalf("expected 3 acceptance_checks, got %d", len(out.AcceptanceChecks))
+	}
+	if out.AcceptanceChecks[0].Raw != "AC-0: plain string criterion" {
+		t.Errorf("plain-string item lost: %+v", out.AcceptanceChecks[0])
+	}
+	if out.AcceptanceChecks[0].IsEARS() {
+		t.Errorf("plain-string item must not be EARS")
+	}
+	if out.AcceptanceChecks[1].ID != "AC-1" || out.AcceptanceChecks[1].IsEARS() {
+		t.Errorf("minimal-object item wrong: %+v", out.AcceptanceChecks[1])
+	}
+	ac2 := out.AcceptanceChecks[2]
+	if ac2.ID != "AC-2" || ac2.Given != "g" || ac2.When != "w" || ac2.Then != "t" || !ac2.IsEARS() {
+		t.Errorf("EARS item lost fields: %+v", ac2)
+	}
+}
+
+// TestValidateAcceptsPlainStringAcceptance proves a plain-string acceptance item
+// (no id) is valid — the oneOf:[string,...] backward-compat form.
+func TestValidateAcceptsPlainStringAcceptance(t *testing.T) {
+	specRef := "spec.md"
+	c := &Change{
+		ESLVersion:       "1.0",
+		ChangeID:         "plain-ac",
+		Status:           StatusProposed,
+		Tier:             TierLite,
+		Maker:            "vivi",
+		Checker:          "vigil",
+		AcceptanceChecks: []AcceptanceCheck{{Raw: "AC-1: dry-run exits 0"}},
+		SpecRef:          &specRef,
+	}
+	if errs := Validate(c); len(errs) != 0 {
+		t.Errorf("plain-string acceptance item should validate, got %v", errs)
+	}
+}
+
 func TestValidateRejectsIllegalEnums(t *testing.T) {
 	c := &Change{
 		ESLVersion:       "1.0",

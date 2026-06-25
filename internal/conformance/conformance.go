@@ -3,11 +3,13 @@
 //
 // THE PARITY INVARIANT (FORGE Decision 2 — LOAD-BEARING): for every change-folder
 // input, `tonberry verify` (this package) and `bash esl-conformance.sh` MUST
-// agree on the 6 checks C1–C6 (ids, MUST/SHOULD level, ok/fail verdict, and
-// semantics), the exit codes (0/1/3; 2 reserved), and the --json shape. The bash
-// checker is AUTHORITATIVE on any divergence; a divergence is a release-blocking
-// reversal condition. parity/esl-conformance.sh is the vendored oracle and
-// parity_test.go is the locking gate.
+// agree on the checks C1–C6 (MUST) and C7 (SHOULD, the advisory EARS lint) — ids,
+// MUST/SHOULD level, ok/fail verdict, and semantics — the exit codes (0/1/3; 2
+// reserved), and the --json shape. C7 is advisory: a C7-only failure NEVER changes
+// the exit code (only the MUST checks C1–C6 block), in BOTH the bash oracle and
+// this port. The bash checker is AUTHORITATIVE on any divergence; a divergence is a
+// release-blocking reversal condition. parity/esl-conformance.sh is the vendored
+// oracle and parity_test.go is the locking gate.
 //
 // To stay faithful, this port reads change.json as untyped JSON (like jq's
 // `-r '<filter> // empty'`) rather than through the typed manifest.Change struct,
@@ -263,16 +265,54 @@ func Check(targetAbs string, mode Mode) Report {
 		}
 	}
 
+	// -- Check 7: EARS-structured acceptance_checks complete (SHOULD) -------- //
+	//
+	// C7 is ADVISORY (SHOULD-level), a faithful port of esl-conformance.sh's C7.
+	// An acceptance_checks item is in the EARS form iff it is an object that
+	// declares at least one EARS-specific key (given|when|then). For each EARS
+	// item, warn if any of given|when|then|verify_method is absent or not a
+	// non-empty string. A C7 fail NEVER changes the exit code (only MUST checks
+	// C1–C6 can block) — see the BLOCKING_FAIL split below.
+	if changeOK && mACCount > 0 {
+		items, _ := m["acceptance_checks"].([]any)
+		for i := 0; i < mACCount; i++ {
+			it, isObj := items[i].(map[string]any)
+			if !isObj {
+				continue // plain string (or other non-object) → no C7 finding
+			}
+			if !earsForm(it) {
+				continue // legacy {id, verify_method} object → no C7 finding
+			}
+			acID := jget(it, "id")
+			if acID == "" {
+				acID = fmt.Sprintf("#%d", i)
+			}
+			missing := earsMissing(it)
+			if missing != "" {
+				rec.record("C7", "SHOULD", "fail", "ears_acceptance_complete",
+					fmt.Sprintf("%s: EARS item missing/empty: %s", acID, missing))
+			} else {
+				rec.record("C7", "SHOULD", "ok", "ears_acceptance_complete", acID)
+			}
+		}
+	}
+
 	// -- summarise ---------------------------------------------------------- //
+	// hasFail reflects any fail (human "warnings present"); blockingFail is the
+	// exit-code lever — ONLY MUST-level fails block. A SHOULD-level fail (C7 —
+	// advisory EARS lint) never changes the exit code.
 	hasFail := false
+	blockingFail := false
 	for _, r := range rec.results {
 		if r.Status == "fail" {
 			hasFail = true
-			break
+			if r.Level == "MUST" {
+				blockingFail = true
+			}
 		}
 	}
 	exit := 0
-	if hasFail && mode == ModeBlock {
+	if blockingFail && mode == ModeBlock {
 		exit = 3
 	}
 
@@ -348,6 +388,60 @@ func acceptanceCount(m map[string]any) int {
 		return 0
 	}
 	return len(arr)
+}
+
+// earsForm reports whether an acceptance_checks object is in the EARS form,
+// replicating the bash jq predicate:
+//
+//	($it | type) == "object" and (has("given") or has("when") or has("then"))
+//
+// The caller has already asserted $it is an object; here we test the key set.
+func earsForm(it map[string]any) bool {
+	if _, ok := it["given"]; ok {
+		return true
+	}
+	if _, ok := it["when"]; ok {
+		return true
+	}
+	if _, ok := it["then"]; ok {
+		return true
+	}
+	return false
+}
+
+// earsMissing returns the comma-joined list of EARS fields (in the fixed order
+// given,when,then,verify_method) that are absent or NOT a non-empty string,
+// replicating the bash jq:
+//
+//	["given","when","then","verify_method"]
+//	| map(select((($it[.]?) | (type == "string" and length > 0)) | not))
+//	| join(",")
+func earsMissing(it map[string]any) string {
+	var miss []string
+	for _, f := range []string{"given", "when", "then", "verify_method"} {
+		v, ok := it[f]
+		if !ok {
+			miss = append(miss, f)
+			continue
+		}
+		s, isStr := v.(string)
+		if !isStr || len(s) == 0 {
+			miss = append(miss, f)
+		}
+	}
+	return joinComma(miss)
+}
+
+// joinComma joins with a literal comma (no spaces), matching jq's join(",").
+func joinComma(parts []string) string {
+	out := ""
+	for i, p := range parts {
+		if i > 0 {
+			out += ","
+		}
+		out += p
+	}
+	return out
 }
 
 func fileExists(p string) bool {
