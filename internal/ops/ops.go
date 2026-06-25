@@ -120,11 +120,11 @@ type RightSizeInput struct {
 
 // RightSizeOutput echoes the deterministic classification.
 type RightSizeOutput struct {
-	Tier          string               `json:"tier"`
-	Route         string               `json:"route"`
-	Signals       rightsizing.Signals  `json:"signals"`
-	Deterministic bool                 `json:"deterministic"`
-	ManifestPath  string               `json:"manifest_path,omitempty"`
+	Tier          string              `json:"tier"`
+	Route         string              `json:"route"`
+	Signals       rightsizing.Signals `json:"signals"`
+	Deterministic bool                `json:"deterministic"`
+	ManifestPath  string              `json:"manifest_path,omitempty"`
 }
 
 // RightSize runs the deterministic gate and (optionally) writes the tier into
@@ -427,11 +427,11 @@ type VerifyInput struct {
 
 // VerifyOutput mirrors the conformance.Report (the parity surface).
 type VerifyOutput struct {
-	TargetBasename string              `json:"target_basename"`
-	Mode           string              `json:"mode"`
+	TargetBasename string               `json:"target_basename"`
+	Mode           string               `json:"mode"`
 	Results        []conformance.Result `json:"results"`
-	ExitCode       int                 `json:"exit_code"`
-	HasFail        bool                `json:"has_fail"`
+	ExitCode       int                  `json:"exit_code"`
+	HasFail        bool                 `json:"has_fail"`
 }
 
 // Verify resolves the change dir, runs the checks, and returns the report.
@@ -467,11 +467,11 @@ func Verify(in VerifyInput, resolveAbs func(string) (string, error)) (*VerifyOut
 
 // DriftCheckInput re-derives acceptance_checks vs the spec-of-record and tree.
 type DriftCheckInput struct {
-	ProjectRoot      string   `json:"project_root,omitempty"`
-	ChangeID         string   `json:"change_id"`
-	Checker          string   `json:"checker"`
-	SpecOfRecordRef  string   `json:"spec_of_record_ref,omitempty"`
-	TreeRoot         string   `json:"tree_root,omitempty"`
+	ProjectRoot     string `json:"project_root,omitempty"`
+	ChangeID        string `json:"change_id"`
+	Checker         string `json:"checker"`
+	SpecOfRecordRef string `json:"spec_of_record_ref,omitempty"`
+	TreeRoot        string `json:"tree_root,omitempty"`
 	// Mismatches, if provided by the caller's re-derivation, drive the result.
 	// tonberry does not itself re-run tests; the identity-distinct checker reports
 	// the mismatches it found, and tonberry records the verdict deterministically.

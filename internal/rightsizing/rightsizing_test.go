@@ -8,9 +8,9 @@ import (
 
 func TestClassifyTable(t *testing.T) {
 	cases := []struct {
-		name   string
-		s      Signals
-		want   manifest.Tier
+		name string
+		s    Signals
+		want manifest.Tier
 	}{
 		// full triggers (precedence 1)
 		{"rubric>=7 forces full", Signals{FilesTouched: 1, RubricScore: 7}, manifest.TierFull},

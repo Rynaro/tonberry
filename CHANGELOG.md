@@ -3,6 +3,57 @@
 All notable changes to **tonberry** are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses SemVer.
 
+## [0.3.1] — 2026-06-25
+
+Hardening + hygiene release. No change to the `verify` 6-check semantics or the
+parity surface (`internal/conformance` + `parity/esl-conformance.sh` stay
+byte-identical to the canonical bash oracle). CI, release-metadata, and CLI
+arg-parsing only.
+
+### Added
+
+- **Release-manifest index digest** — `release.yml` now captures the multi-arch
+  **manifest-list (index) digest** and stamps it into `dist/release-manifest.json`
+  as `manifest_sha256` (previously hard-coded `null`). The merge job already emits
+  the index digest as a job output; a new `Resolve multi-arch index digest` step in
+  the `github-release` job consumes it. Works for BOTH the tag-triggered build path
+  AND the `skip_image` re-attach path (re-attach queries the **already-published**
+  image's index digest via `docker buildx imagetools inspect` rather than a freshly
+  built one). errexit-safe; `packages: read` added to the release job for the query.
+- **Vendored-oracle drift guard** (`conformance.yml`) — mechanizes the ESL §9.3
+  reversal condition. A new CI step fetches the canonical
+  `eidolons-esl@main conformance/esl-conformance.sh` and compares its **body**
+  (comment/header lines stripped) against the vendored `parity/esl-conformance.sh`.
+  A confirmed body divergence **FAILS** the job (vendored oracle is stale →
+  re-vendor); a fetch failure emits a **loud WARN** and does not hard-fail (so a
+  transient network flake never reds the build). A weekly `schedule:` cron catches
+  upstream checker revisions even when tonberry isn't being pushed.
+- **gofmt gate** (`conformance.yml`) — a CI step fails the job if `gofmt -l .`
+  lists any file, so the tree stays formatted. errexit-safe.
+
+### Changed
+
+- **gofmt-clean the tree** — `internal/ops/ops.go`, `internal/archive/archive.go`,
+  and `internal/rightsizing/rightsizing_test.go` were re-formatted (struct field
+  alignment only; no behavior change) so the new gofmt gate passes.
+- **Consistent `list`/`status`/`assess` CLI args** — all three one-shot CLI ops
+  now share one convention: a **positional changes-dir path** AND the
+  `--changes_dir` flag are accepted uniformly (default `.spectra/changes`,
+  relative to `--project_root`); `--changes_dir` wins if both are given. Previously
+  `list <dir>` ignored the positional and `assess` only honored `--changes_dir`.
+  README usage examples updated. The MCP tool input schemas are **unchanged** —
+  only the CLI arg parsing in `cmd/tonberry/main.go`.
+- **Version bump to 0.3.1** in `cmd/tonberry` (CLI `version`) and
+  `internal/mcpserver` (MCP-reported version), which were both still `0.2.0`.
+
+### Unchanged (parity surface frozen)
+
+- `internal/conformance` (the 6 checks C1–C6 + C7), `parity/esl-conformance.sh`,
+  and `fixtures/` are untouched; the parity invariant (byte-identical to the
+  vendored bash oracle, both directions) is re-proven green this phase.
+
+[0.3.1]: https://github.com/Rynaro/tonberry/releases/tag/v0.3.1
+
 ## [0.3.0] — 2026-06-25
 
 EARS-structured acceptance checks + the advisory **C7** lint, re-vendored and

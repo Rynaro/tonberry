@@ -125,9 +125,11 @@ tonberry transition   --change_id add-flag --to_status in_progress --has_code tr
 tonberry archive      --change_id add-flag
 
 # project-scope observability (read-only)
-tonberry list         --changes_dir .spectra/changes
-tonberry status       --change_id add-flag --mode warn
-tonberry assess       --changes_dir .spectra/changes --repo_loc 60000   # or omit repo_loc to walk the tree
+# list/status/assess share one convention: a positional changes-dir path and
+# --changes_dir are equivalent (default .spectra/changes; --changes_dir wins if both given).
+tonberry list         .spectra/changes                  # or: tonberry list --changes_dir .spectra/changes
+tonberry status       .spectra/changes --change_id add-flag --mode warn
+tonberry assess       .spectra/changes --repo_loc 60000  # or omit repo_loc to walk the tree
 
 # 3. CI / standalone conformance checker (no MCP host needed)
 tonberry verify .spectra/changes/add-flag --mode block --json

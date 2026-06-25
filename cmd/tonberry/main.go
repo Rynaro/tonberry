@@ -28,7 +28,7 @@ import (
 )
 
 // Version is the tonberry build/release version.
-const Version = "0.2.0"
+const Version = "0.3.1"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -61,11 +61,11 @@ func main() {
 	case "archive":
 		runOp(args, opArchive)
 	case "list":
-		runOp(args, opList)
+		runOpArgs(args, opList)
 	case "status":
-		runOp(args, opStatus)
+		runOpArgs(args, opStatus)
 	case "assess":
-		runOp(args, opAssess)
+		runOpArgs(args, opAssess)
 	case "version", "--version":
 		fmt.Println(Version)
 	case "-h", "--help", "help":
@@ -94,16 +94,21 @@ Usage:
         compose_envelope drift_check archive
         list status assess
 
-  tonberry list   [--changes_dir DIR | --project_root DIR]
+  tonberry list   [DIR] [--changes_dir DIR] [--project_root DIR]
       Enumerate change folders: [{change_id,status,tier,drift_checked}].
+      DIR is the changes dir (default .spectra/changes); positional and
+      --changes_dir are equivalent (--changes_dir wins if both are given).
 
-  tonberry status --change_id ID [--project_root DIR] [--mode warn|block]
+  tonberry status [DIR] [--changes_dir DIR] --change_id ID
+                  [--project_root DIR] [--mode warn|block]
       Manifest summary + verify verdict + legal next transitions.
+      DIR / --changes_dir locate the changes dir (default .spectra/changes).
 
-  tonberry assess [--project_root DIR] [--changes_dir DIR] [--repo_loc N]
-                  [--n N] [--l L] [--r R]
+  tonberry assess [DIR] [--changes_dir DIR] [--project_root DIR]
+                  [--repo_loc N] [--n N] [--l L] [--r R]
       Project-scope escalation assessment (change_count/repo_loc/full_ratio
       vs thresholds N=10/L=50000/R=0.4) -> recommended_mode advisory|block.
+      DIR / --changes_dir locate the changes dir (default .spectra/changes).
 
   tonberry version | -h | --help
 `)
@@ -280,6 +285,46 @@ func parseFlags(args []string) flagMap {
 	return fm
 }
 
+// firstPositional returns the first non-flag, non-flag-value token in args, or ""
+// if there is none. It mirrors parseFlags' rule that a flag is consumed with its
+// following value (unless that value itself starts with "--"), so a value like
+// `--mode warn` does not leak "warn" as a positional.
+func firstPositional(args []string) string {
+	i := 0
+	for i < len(args) {
+		a := args[i]
+		if strings.HasPrefix(a, "--") {
+			// `--key=value` consumes one token; `--key value` consumes two
+			// (matching parseFlags). A trailing flag or `--key --next` consumes one.
+			if strings.IndexByte(a, '=') >= 0 {
+				i++
+				continue
+			}
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "--") {
+				i += 2
+				continue
+			}
+			i++
+			continue
+		}
+		return a
+	}
+	return ""
+}
+
+// changesDirArg resolves the changes directory for the consistent positional /
+// --changes_dir convention shared by list/status/assess: an explicit
+// --changes_dir flag wins; otherwise the first positional path is used; the op's
+// own default (.spectra/changes, relative to --project_root) applies when neither
+// is given. Returns "" when neither a flag nor a positional is present, so the
+// op layer keeps owning the default.
+func changesDirArg(f flagMap, args []string) string {
+	if v := f.str("changes_dir"); v != "" {
+		return v
+	}
+	return firstPositional(args)
+}
+
 func (f flagMap) str(k string) string   { return f[k] }
 func (f flagMap) boolean(k string) bool { return f[k] == "true" || f[k] == "1" }
 func (f flagMap) integer(k string) int {
@@ -294,6 +339,19 @@ func (f flagMap) float(k string) float64 {
 func runOp(args []string, fn func(flagMap) (any, error)) {
 	fm := parseFlags(args)
 	out, err := fn(fm)
+	if err != nil {
+		emitJSON(map[string]any{"error": err.Error()})
+		os.Exit(1)
+	}
+	emitJSON(out)
+}
+
+// runOpArgs is runOp for ops that also accept a positional path (list/status/
+// assess): the handler receives both the parsed flag map and the raw args so it
+// can resolve the consistent positional / --changes_dir convention.
+func runOpArgs(args []string, fn func(flagMap, []string) (any, error)) {
+	fm := parseFlags(args)
+	out, err := fn(fm, args)
 	if err != nil {
 		emitJSON(map[string]any{"error": err.Error()})
 		os.Exit(1)
@@ -410,27 +468,31 @@ func opArchive(f flagMap) (any, error) {
 	})
 }
 
-func opList(f flagMap) (any, error) {
+// opList, opStatus, opAssess share the positional / --changes_dir convention:
+// `tonberry <op> <dir>` and `tonberry <op> --changes_dir <dir>` are equivalent;
+// --changes_dir wins if both are given; the op default (.spectra/changes) applies
+// when neither is present.
+func opList(f flagMap, args []string) (any, error) {
 	return ops.List(ops.ListInput{
-		ChangesDir:  f.str("changes_dir"),
+		ChangesDir:  changesDirArg(f, args),
 		ProjectRoot: f.str("project_root"),
 	})
 }
 
-func opStatus(f flagMap) (any, error) {
+func opStatus(f flagMap, args []string) (any, error) {
 	return ops.Status(ops.StatusInput{
 		ProjectRoot: f.str("project_root"),
-		ChangesDir:  f.str("changes_dir"),
+		ChangesDir:  changesDirArg(f, args),
 		ChangeID:    f.str("change_id"),
 		Mode:        f.str("mode"),
 		HasCode:     f.boolean("has_code"),
 	})
 }
 
-func opAssess(f flagMap) (any, error) {
+func opAssess(f flagMap, args []string) (any, error) {
 	in := ops.AssessInput{
 		ProjectRoot: f.str("project_root"),
-		ChangesDir:  f.str("changes_dir"),
+		ChangesDir:  changesDirArg(f, args),
 		RepoLOC:     f.integer("repo_loc"),
 		N:           f.integer("n"),
 		L:           f.integer("l"),

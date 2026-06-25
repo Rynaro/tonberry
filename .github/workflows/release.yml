@@ -176,6 +176,9 @@ jobs:
       contents: write
       id-token: write
       attestations: write
+      # packages: read is needed for the skip_image re-attach path, which queries
+      # the already-published GHCR index digest via docker buildx imagetools inspect.
+      packages: read
     steps:
       - name: Resolve tag
         id: tag
@@ -191,8 +194,43 @@ jobs:
           ref: ${{ steps.tag.outputs.tag }}
           fetch-depth: 0
 
+      # Resolve the multi-arch INDEX digest (the manifest-list digest, sha256:...)
+      # to stamp into release-manifest.json. Two paths:
+      #   - normal build: the merge job already computed + emitted it (job output).
+      #   - re-attach (skip_image): the merge job was skipped, so query the
+      #     already-published image's index digest from the registry.
+      # errexit-safe: GitHub runs run: under bash -e, so any intentionally-non-zero
+      # command is captured with `ec=0; cmd || ec=$?` before we branch on it.
+      - name: Resolve multi-arch index digest
+        id: idx
+        env:
+          MERGE_DIGEST: ${{ needs.merge-image.outputs.digest }}
+        run: |
+          digest="$MERGE_DIGEST"
+          if [ -n "$digest" ]; then
+            echo "Using index digest from merge job: $digest"
+          else
+            # Re-attach path: query the published image. Needs docker + GHCR login.
+            tag="${{ steps.tag.outputs.tag }}"
+            version="${tag#v}"
+            lower="$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')"
+            image="${{ env.REGISTRY }}/${lower}"
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login "${{ env.REGISTRY }}" -u "${{ github.actor }}" --password-stdin
+            ec=0
+            digest="$(docker buildx imagetools inspect "${image}:${version}" --format '{{json .Manifest}}' | jq -r '.digest')" || ec=$?
+            if [ "$ec" -ne 0 ] || [ -z "$digest" ] || [ "$digest" = "null" ]; then
+              echo "::warning title=index digest unresolved::could not query published index digest for ${image}:${version} (skip_image re-attach). manifest_sha256 will be null." >&2
+              digest=""
+            else
+              echo "Queried published index digest: $digest"
+            fi
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
       - name: Build release metadata (Eidolon-release contract)
         id: meta
+        env:
+          MANIFEST_DIGEST: ${{ steps.idx.outputs.digest }}
         run: |
           set -euo pipefail
           tag="${{ steps.tag.outputs.tag }}"
@@ -202,6 +240,12 @@ jobs:
           archive_sha="$(sha256sum dist/source.tar | awk '{print $1}')"
           commit="$(git rev-parse HEAD)"
           tree="$(git rev-parse 'HEAD^{tree}')"
+          # An empty digest (only possible if a re-attach query failed) stays null
+          # rather than an empty string, preserving the prior null contract.
+          manifest_arg="null"
+          if [ -n "$MANIFEST_DIGEST" ]; then
+            manifest_arg="$MANIFEST_DIGEST"
+          fi
           jq -n \
             --arg name "tonberry" \
             --arg version "$version" \
@@ -210,6 +254,7 @@ jobs:
             --arg commit "$commit" \
             --arg tree "$tree" \
             --arg archive_sha "$archive_sha" \
+            --arg manifest_sha "$manifest_arg" \
             --arg workflow ".github/workflows/release.yml" \
             '{
               name: $name,
@@ -219,7 +264,7 @@ jobs:
               commit: $commit,
               tree: $tree,
               archive_sha256: $archive_sha,
-              manifest_sha256: null,
+              manifest_sha256: (if $manifest_sha == "null" then null else $manifest_sha end),
               provenance: {
                 github_attestation: true,
                 workflow: $workflow

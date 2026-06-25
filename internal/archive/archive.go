@@ -28,10 +28,10 @@ const PromotionEnvelopeName = "promotion.envelope.json"
 
 // Result is the outcome of an archive operation.
 type Result struct {
-	ArchivePath             string `json:"archive_path"`
-	Status                  string `json:"status"`
-	PromotionEnvelopePath   string `json:"promotion_envelope_path"`
-	PromotionPerformative   string `json:"promotion_performative"`
+	ArchivePath           string `json:"archive_path"`
+	Status                string `json:"status"`
+	PromotionEnvelopePath string `json:"promotion_envelope_path"`
+	PromotionPerformative string `json:"promotion_performative"`
 }
 
 // Archive snapshots changeDir into <projectRoot>/archive/<date>-<change_id>/,

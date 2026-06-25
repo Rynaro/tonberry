@@ -26,7 +26,7 @@ import (
 const ServerName = "tonberry"
 
 // Version is the tonberry build version reported to MCP clients.
-const Version = "0.2.0"
+const Version = "0.3.1"
 
 // ToolNames is the canonical, ordered list of the 11 tools.
 var ToolNames = []string{

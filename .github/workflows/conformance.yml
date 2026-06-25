@@ -13,6 +13,10 @@ name: conformance
 on:
   push:
   pull_request:
+  # Weekly cron so an upstream eidolons-esl checker revision is caught by the
+  # vendored-oracle drift guard even when tonberry itself isn't being pushed.
+  schedule:
+    - cron: "17 6 * * 1"
 
 jobs:
   test:
@@ -46,6 +50,20 @@ jobs:
 
       - name: go vet
         run: go vet ./...
+
+      # gofmt gate: the tree must be gofmt-clean. `gofmt -l .` lists files that
+      # would change under formatting; any output fails the job. errexit-safe —
+      # the command substitution always succeeds, we assert on its (empty) output.
+      - name: gofmt gate
+        run: |
+          dirty="$(gofmt -l .)"
+          if [ -n "$dirty" ]; then
+            echo "gofmt FAIL — the following files are not gofmt-clean:" >&2
+            echo "$dirty" >&2
+            echo "Run: gofmt -w <files>" >&2
+            exit 1
+          fi
+          echo "gofmt ok: tree is formatted"
 
       - name: go test (parity ENFORCED)
         env:
@@ -94,3 +112,42 @@ jobs:
           if [ "$ec" -ne 0 ]; then echo "oracle should PASS lite-add-flag (got $ec)" >&2; rc=1; fi
           [ "$rc" -eq 0 ] && echo "oracle tripwire ok"
           exit "$rc"
+
+      # Vendored-oracle DRIFT GUARD (mechanizes the ESL §9.3 reversal condition).
+      # The vendored parity/esl-conformance.sh is a frozen copy of the canonical
+      # eidolons-esl checker. This step fetches the canonical checker from main and
+      # compares its BODY (comment/header lines stripped — the vendored copy carries
+      # an extra canonical-source header note) against the vendored copy.
+      #   - confirmed body divergence -> FAIL (the vendored oracle is stale; re-vendor).
+      #   - fetch failure (network flake / file moved) -> loud WARN, do NOT hard-fail.
+      # errexit-safe: every intentionally-non-zero command captures its code with
+      # `ec=0; cmd || ec=$?` so `bash -e` doesn't abort before the assertion.
+      - name: Vendored-oracle drift guard
+        shell: bash
+        run: |
+          url="https://raw.githubusercontent.com/Rynaro/eidolons-esl/main/conformance/esl-conformance.sh"
+          tmp="$(mktemp)"
+          ec=0
+          curl -fsSL --max-time 30 "$url" -o "$tmp" || ec=$?
+          if [ "$ec" -ne 0 ]; then
+            echo "::warning title=ESL drift guard skipped::could not fetch canonical checker (curl exit $ec) from $url — transient network issue or the file moved. NOT failing the build, but the vendored oracle was NOT verified this run." >&2
+            echo "WARN: drift guard SKIPPED (fetch failed, exit $ec) — vendored oracle unverified." >&2
+            rm -f "$tmp"
+            exit 0
+          fi
+          # Compare bodies, ignoring comment/blank-prefixed lines on both sides so the
+          # vendored copy's extra canonical-source header note is not flagged as drift.
+          dec=0
+          diff <(grep -vE '^[[:space:]]*#' "$tmp") \
+               <(grep -vE '^[[:space:]]*#' parity/esl-conformance.sh) >/tmp/esl-drift.diff 2>&1 || dec=$?
+          if [ "$dec" -ne 0 ]; then
+            echo "::error title=ESL vendored-oracle DRIFT::parity/esl-conformance.sh has drifted from canonical eidolons-esl@main. Re-vendor the checker and re-prove parity (ESL §9.3 reversal condition)." >&2
+            echo "DRIFT GUARD FAIL: vendored oracle body differs from canonical eidolons-esl@main." >&2
+            echo "----- body diff (canonical < vs > vendored, comments stripped) -----" >&2
+            cat /tmp/esl-drift.diff >&2
+            echo "-------------------------------------------------------------------" >&2
+            rm -f "$tmp"
+            exit 1
+          fi
+          echo "drift guard ok: vendored oracle body is byte-identical to canonical eidolons-esl@main"
+          rm -f "$tmp"
