@@ -155,6 +155,11 @@ type Change struct {
 	CreatedAt    string  `json:"created_at,omitempty"`
 	DriftChecked *bool   `json:"drift_checked,omitempty"`
 	ArchivePath  *string `json:"archive_path,omitempty"`
+	// HasCode is the OPTIONAL lifecycle hint (schema/change.v1.json: has_code,
+	// ESL §3.2): true iff the change contains code. Declared at propose, read by
+	// transition (an explicit per-transition flag overrides it). *bool so "unset"
+	// (nil) is distinct from an explicit false.
+	HasCode *bool `json:"has_code,omitempty"`
 }
 
 var changeIDRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
@@ -285,4 +290,10 @@ func Validate(c *Change) []string {
 // DriftCheckedTrue reports whether drift_checked is present and true.
 func (c *Change) DriftCheckedTrue() bool {
 	return c.DriftChecked != nil && *c.DriftChecked
+}
+
+// HasCodeTrue reports whether has_code is present and true (the manifest hint;
+// ESL §3.2). Absent/nil reads as false (a no-code change skips the code states).
+func (c *Change) HasCodeTrue() bool {
+	return c.HasCode != nil && *c.HasCode
 }

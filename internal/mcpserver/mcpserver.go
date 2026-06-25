@@ -26,7 +26,7 @@ import (
 const ServerName = "tonberry"
 
 // Version is the tonberry build version reported to MCP clients.
-const Version = "0.3.1"
+const Version = "0.4.0"
 
 // ToolNames is the canonical, ordered list of the 11 tools.
 var ToolNames = []string{
@@ -71,7 +71,7 @@ func New() *mcp.Server {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "propose",
-		Description: "Scaffold a change.json (status=proposed) under .spectra/changes/<change_id>/. tier is null until right_size.",
+		Description: "Scaffold a change.json (status=proposed) under .spectra/changes/<change_id>/. tier is null until right_size. Pass has_code (bool) to persist the §3.2 lifecycle hint so transition reads it without a per-call flag.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ops.ProposeInput) (*mcp.CallToolResult, ops.ProposeOutput, error) {
 		out, err := ops.Propose(in)
 		return result(err), deref(out), err
@@ -79,7 +79,7 @@ func New() *mcp.Server {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "right_size",
-		Description: "Deterministic 3-signal ESL §4 gate: (files_touched, rubric_score/12, tradeoff_present) -> trivial/lite/full. Same signals always yield the same tier.",
+		Description: "Deterministic 3-signal ESL §4 gate: (files_touched, rubric_score/12, tradeoff_present) -> trivial/lite/full. Same signals always yield the same tier. PERSISTS the tier by default when change_id is given (set dry_run to classify only).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ops.RightSizeInput) (*mcp.CallToolResult, ops.RightSizeOutput, error) {
 		out, err := ops.RightSize(in)
 		return result(err), deref(out), err
@@ -87,7 +87,7 @@ func New() *mcp.Server {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "transition",
-		Description: "Advance status honoring ESL §3 skip-rules (lite/trivial skip deliberated; code-states require code; archived requires drift_checked).",
+		Description: "Advance status honoring ESL §3 skip-rules (lite/trivial skip deliberated; code-states require code; archived requires drift_checked). has_code is READ from the manifest hint (override with an explicit has_code). PERSISTS the new status by default when allowed (set dry_run to evaluate only).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ops.TransitionInput) (*mcp.CallToolResult, ops.TransitionOutput, error) {
 		out, err := ops.Transition(in)
 		return result(err), deref(out), err
@@ -119,7 +119,7 @@ func New() *mcp.Server {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "drift_check",
-		Description: "Identity-distinct checker (checker!=maker) records the drift verdict; mismatch -> ESCALATE to in_progress; match -> drift_checked=true (ESL §6.4).",
+		Description: "Identity-distinct checker (checker!=maker) records the drift verdict; mismatch -> ESCALATE to in_progress; match -> drift_checked=true (ESL §6.4). PERSISTS drift_checked by default on a clean verdict (set dry_run to evaluate only).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ops.DriftCheckInput) (*mcp.CallToolResult, ops.DriftCheckOutput, error) {
 		out, err := ops.DriftCheck(in)
 		return result(err), deref(out), err
@@ -127,7 +127,7 @@ func New() *mcp.Server {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "archive",
-		Description: "Snapshot folder -> archive/<date>-<change_id>/, set status=archived + archive_path, compose the promotion-intent INFORM envelope. Requires drift_checked=true. Never calls crystalium.",
+		Description: "MOVE the change folder -> archive/<date>-<change_id>/ (the active folder no longer exists afterward), set status=archived + archive_path, compose the promotion-intent INFORM envelope. Requires drift_checked=true. Never calls crystalium.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ops.ArchiveInput) (*mcp.CallToolResult, ops.ArchiveOutput, error) {
 		out, err := ops.Archive(in)
 		return result(err), deref(out), err
@@ -135,7 +135,7 @@ func New() *mcp.Server {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list",
-		Description: "Enumerate change folders under .spectra/changes/ (skips the archive/ snapshot subdir); returns [{change_id,status,tier,drift_checked}] sorted by change_id. Read-only.",
+		Description: "Enumerate ACTIVE change folders under .spectra/changes/; returns [{change_id,status,tier,drift_checked,archived}] sorted by change_id. Set include_archived to ALSO list archived snapshots under archive/. Read-only.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ops.ListInput) (*mcp.CallToolResult, ops.ListOutput, error) {
 		out, err := ops.List(in)
 		return result(err), deref(out), err
@@ -151,7 +151,7 @@ func New() *mcp.Server {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "assess",
-		Description: "Project-scope escalation assessment: aggregate the §4.2 signals (change_count/repo_loc/full_ratio) vs thresholds (N=10/L=50000/R=0.4, overridable) -> recommended_mode advisory|block. Deterministic, read-only; tonberry ships the assessment, the nexus records the flip (eidolons-esl docs/escalation.md).",
+		Description: "Project-scope escalation assessment: aggregate the §4.2 signals (change_count/repo_loc/full_ratio, counting BOTH active AND archived changes per §9.2) vs thresholds (N=10/L=50000/R=0.4, overridable) -> recommended_mode advisory|block. Deterministic, read-only; tonberry ships the assessment, the nexus records the flip (eidolons-esl docs/escalation.md).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ops.AssessInput) (*mcp.CallToolResult, ops.AssessOutput, error) {
 		out, err := ops.Assess(in)
 		return result(err), deref(out), err

@@ -34,16 +34,17 @@ type Result struct {
 	PromotionPerformative string `json:"promotion_performative"`
 }
 
-// Archive snapshots changeDir into <projectRoot>/archive/<date>-<change_id>/,
-// sets status=archived + archive_path on the snapshot's change.json, and composes
-// the promotion-intent INFORM envelope inside the snapshot folder.
+// Archive MOVES changeDir to <changesRoot>/archive/<date>-<change_id>/ (ESL §9.2:
+// a move, not a copy — the active .spectra/changes/<change_id>/ no longer exists
+// afterward), sets status=archived + archive_path on the moved change.json, and
+// composes the promotion-intent INFORM envelope inside the moved folder.
 //
 // Precondition (ESL §6.4, conformance C5): drift_checked MUST be true. If not,
 // Archive refuses (this is the graceful pre-check that mirrors the C5 block).
 //
 // date defaults to today (UTC, YYYY-MM-DD) when empty. The archive root is
-// derived from the change folder's parent-of-parent: a change folder lives at
-// .spectra/changes/<change_id>/, and the snapshot goes to
+// derived from the change folder's parent: a change folder lives at
+// .spectra/changes/<change_id>/, and it is moved to
 // .spectra/changes/archive/<date>-<change_id>/ — keeping everything under
 // .spectra/ (ESL §9.2 "MUST NOT introduce a new top-level consumer directory").
 func Archive(changeDir, date string, envVersionOverride string) (*Result, error) {
@@ -65,23 +66,34 @@ func Archive(changeDir, date string, envVersionOverride string) (*Result, error)
 	snapDir := filepath.Join(archiveRoot, snapName)
 	relArchivePath := filepath.ToSlash(filepath.Join("archive", snapName))
 
-	if err := copyTree(changeDir, snapDir); err != nil {
-		return nil, fmt.Errorf("snapshot %s -> %s: %w", changeDir, snapDir, err)
+	// MOVE the change folder into archive/<date>-<change_id>/ (ESL §9.2). Rename is
+	// atomic within a filesystem; fall back to copy+remove only if Rename fails
+	// (e.g. a cross-device move). The active change folder must not survive.
+	if err := os.MkdirAll(archiveRoot, 0o755); err != nil {
+		return nil, fmt.Errorf("mkdir archive root %s: %w", archiveRoot, err)
+	}
+	if _, err := os.Stat(snapDir); err == nil {
+		return nil, fmt.Errorf("archive target already exists: %s", snapDir)
+	}
+	if err := os.Rename(changeDir, snapDir); err != nil {
+		// Cross-device or other rename failure: copy then remove the original so
+		// the end state is still a move (active folder gone).
+		if cerr := copyTree(changeDir, snapDir); cerr != nil {
+			return nil, fmt.Errorf("move %s -> %s: rename failed (%v) and copy fallback failed: %w", changeDir, snapDir, err, cerr)
+		}
+		if rerr := os.RemoveAll(changeDir); rerr != nil {
+			return nil, fmt.Errorf("move %s -> %s: copied but could not remove original: %w", changeDir, snapDir, rerr)
+		}
 	}
 
-	// Update the snapshot's manifest: status=archived, archive_path set.
+	// Update the moved folder's manifest: status=archived, archive_path set.
 	c.Status = manifest.StatusArchived
 	c.ArchivePath = &relArchivePath
 	if _, err := manifest.Write(snapDir, c); err != nil {
 		return nil, err
 	}
-	// Also reflect status/archive_path on the live (source) manifest so the
-	// in-tree change folder records the archived state.
-	if _, err := manifest.Write(changeDir, c); err != nil {
-		return nil, err
-	}
 
-	// Compose the promotion-intent envelope inside the snapshot folder.
+	// Compose the promotion-intent envelope inside the moved folder.
 	specRef := "null"
 	if c.SpecRef != nil {
 		specRef = *c.SpecRef

@@ -3,6 +3,70 @@
 All notable changes to **tonberry** are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses SemVer.
 
+## [0.4.0] — 2026-06-25
+
+Three evidence-backed lifecycle-op UX fixes surfaced by the ESL dogfood. The
+`verify` parity surface is **FROZEN** — `internal/conformance` (C1–C6 + C7),
+`parity/esl-conformance.sh`, and `fixtures/` are untouched and stay
+byte-identical to the vendored bash oracle (the drift-guard re-proves it). These
+fixes are lifecycle-OP behavior + manifest schema only. There are no existing
+consumers, so the default flips are safe.
+
+### Changed
+
+- **`has_code` is read from the manifest (FIX 1).** `transition` previously
+  defaulted `--has_code=false`, silently rejecting a code change out of
+  `in_progress` unless the flag was re-passed every call. Now: `propose` and
+  `compose_manifest` accept `has_code` and persist it into `change.json` (the new
+  OPTIONAL `has_code` boolean from `eidolons-esl` `change.v1.json` §3.2);
+  `transition` READS `has_code` from the manifest, and an explicit per-transition
+  `--has_code` OVERRIDES the manifest value (back-compat). `internal/manifest.Change`
+  gained `HasCode *bool` + `HasCodeTrue()`.
+- **Persist-by-default for the lifecycle-advancing ops (FIX 2).** `transition`,
+  `right_size`, and `drift_check` now **WRITE the manifest by default** when the
+  action is allowed/valid (previously they defaulted `write_manifest=false` —
+  "evaluate-only"). A new `--dry-run` flag (and the equivalent MCP `dry_run` arg)
+  restores evaluate-only. `--write_manifest` still works (now `*bool`, nil =
+  default); an explicit `--write_manifest=false` is honored. `right_size` with no
+  `change_id` stays pure classification (no write, no error). Each output gained a
+  `persisted` boolean.
+- **`archive` MOVES the change folder (FIX 3).** `archive` now `os.Rename`s the
+  change folder into `archive/<date>-<change_id>/` (with a copy+remove fallback for
+  a cross-device move) instead of copying and leaving a stale original — the active
+  `.spectra/changes/<change_id>/` no longer exists afterward (ESL §9.2 "a move").
+  `status=archived` + `archive_path` are set on the moved manifest; the
+  promotion-intent envelope is composed in the moved folder.
+- **Counts survive the move (FIX 3).** `assess`'s `change_count` (and the
+  `full_ratio` numerator/denominator) now count BOTH active (`.spectra/changes/*`)
+  AND archived (`.spectra/changes/archive/*`) changes, so archiving never drops the
+  escalation signal. `list` shows ACTIVE changes by default and gained `--all`
+  (alias `--include-archived`) to include archived snapshots; each row carries an
+  `archived` boolean.
+- **Version bump to 0.4.0** (`cmd/tonberry` CLI `version`, `internal/mcpserver`
+  MCP-reported version). MCP tool descriptions + README + CLI `--help` document the
+  persist-by-default flip, the `has_code`-from-manifest read, the archive MOVE, and
+  the `list --all` flag.
+
+### Tests
+
+- `internal/manifest` — `has_code` round-trips (absent reads false).
+- `internal/ops` — has_code read-from-manifest (+ control: no hint blocks
+  `in_progress`); the explicit-flag override in both directions; persist-by-default
+  for transition/right_size/drift_check (default persists, `--dry-run` does not,
+  explicit `write_manifest=false` does not); `assess` counts the archived change;
+  `list` active-default vs `--all`.
+- `internal/archive` — archive MOVES (active folder gone, content + manifest under
+  `archive/`, `status=archived` on the moved manifest).
+
+### Unchanged (parity surface frozen)
+
+- `internal/conformance` (C1–C6 + C7), `parity/esl-conformance.sh`, and
+  `fixtures/` are untouched; the byte-identical parity against the vendored bash
+  oracle (both directions) is re-proven green (`TONBERRY_REQUIRE_PARITY=1`), and
+  the vendored-oracle drift-guard stays identical.
+
+[0.4.0]: https://github.com/Rynaro/tonberry/releases/tag/v0.4.0
+
 ## [0.3.1] — 2026-06-25
 
 Hardening + hygiene release. No change to the `verify` 6-check semantics or the

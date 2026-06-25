@@ -44,22 +44,22 @@ The only schema tonberry owns is the `status`/`tier` enums in
 
 | Tool | Purpose |
 |------|---------|
-| `propose` | Scaffold a `change.json` (status `proposed`) under `.spectra/changes/<change_id>/`. tier is null until `right_size`. |
-| `right_size` | Deterministic ESL §4 gate: `(files_touched, rubric_score/12, tradeoff_present)` → `trivial`/`lite`/`full`. Same signals always yield the same tier. |
-| `transition` | Advance `status` honoring §3 skip-rules (lite/trivial skip `deliberated`; code-states require code; `archived` requires `drift_checked`). |
+| `propose` | Scaffold a `change.json` (status `proposed`) under `.spectra/changes/<change_id>/`. tier is null until `right_size`. Pass `--has_code` to persist the §3.2 lifecycle hint so `transition` reads it without a per-call flag. |
+| `right_size` | Deterministic ESL §4 gate: `(files_touched, rubric_score/12, tradeoff_present)` → `trivial`/`lite`/`full`. Same signals always yield the same tier. **PERSISTS the tier by default** when a `change_id` is given (`--dry-run` classifies only). |
+| `transition` | Advance `status` honoring §3 skip-rules (lite/trivial skip `deliberated`; code-states require code; `archived` requires `drift_checked`). `has_code` is **read from the manifest** hint (override with an explicit `--has_code`). **PERSISTS by default** when allowed (`--dry-run` evaluates only). |
 | `compose_manifest` | Write/validate `change.json` against the ESL-owned `change.v1.json` (references `spec_ref`; never inlines the SPECTRA schema). |
 | `compose_envelope` | Emit an ECL sidecar `*.envelope.json` naming the §7.2 performative for a transition. |
 | `verify` | Run the six MUST conformance checks **C1–C6** (incl. maker≠checker as C4) plus the SHOULD advisory **C7** (EARS acceptance lint). `--mode warn\|block`, `--json`. **Parity-locked** to `esl-conformance.sh`. C7 is advisory — it never changes the exit code (only C1–C6 block). |
-| `drift_check` | Identity-distinct checker (checker ≠ maker) records the drift verdict; mismatch → `ESCALATE` to `in_progress`; match → `drift_checked=true`. |
-| `archive` | Snapshot folder → `archive/<date>-<change_id>/`, set `status=archived` + `archive_path`, compose the **promotion-intent** ECL envelope. Requires `drift_checked=true`. Never calls CRYSTALIUM. |
+| `drift_check` | Identity-distinct checker (checker ≠ maker) records the drift verdict; mismatch → `ESCALATE` to `in_progress`; match → `drift_checked=true`. **PERSISTS by default** on a clean verdict (`--dry-run` evaluates only). |
+| `archive` | **MOVE** the change folder → `archive/<date>-<change_id>/` (the active folder no longer exists afterward), set `status=archived` + `archive_path`, compose the **promotion-intent** ECL envelope. Requires `drift_checked=true`. Never calls CRYSTALIUM. |
 
 **Project-scope observability (3, read-only — v0.2.0):**
 
 | Tool | Purpose |
 |------|---------|
-| `list` | Enumerate change folders under `.spectra/changes/` (skips the `archive/` snapshot subdir); returns `[{change_id,status,tier,drift_checked}]` sorted by `change_id`. |
+| `list` | Enumerate **active** change folders under `.spectra/changes/`; returns `[{change_id,status,tier,drift_checked,archived}]` sorted by `change_id`. `--all` (alias `--include-archived`) ALSO lists archived snapshots under `archive/`. |
 | `status` | For one `change_id`: the manifest summary + the **`verify` verdict** (the same six checks — not re-implemented) + the legal next lifecycle transitions. |
-| `assess` | Project-scope **escalation assessment**: aggregate the §4.2 signals (`change_count` / `repo_loc` / `full_ratio`) vs thresholds → `recommended_mode` `advisory`\|`block`. Deterministic. See the escalation lever below. |
+| `assess` | Project-scope **escalation assessment**: aggregate the §4.2 signals (`change_count` / `repo_loc` / `full_ratio`, counting **both active AND archived** changes per §9.2) vs thresholds → `recommended_mode` `advisory`\|`block`. Deterministic. See the escalation lever below. |
 
 `maker_checker` is **not** a separate tool — maker ≠ checker is **check C4 of
 `verify`** (where the normative bash checker keeps it).
@@ -119,15 +119,18 @@ One static binary, three entry points:
 tonberry serve
 
 # 2. one-shot CLI for any op (JSON result to stdout)
-tonberry propose      --change_id add-flag --maker vivi --spec_ref spec.md --checker vigil
-tonberry right_size   --change_id add-flag --files_touched 1 --rubric_score 5 --tradeoff_present false --write_manifest true
-tonberry transition   --change_id add-flag --to_status in_progress --has_code true --write_manifest true
-tonberry archive      --change_id add-flag
+# right_size / transition / drift_check PERSIST by default (v0.4.0); add --dry-run to
+# evaluate-only. propose --has_code persists the §3.2 hint; transition then reads it.
+tonberry propose      --change_id add-flag --maker vivi --spec_ref spec.md --checker vigil --has_code
+tonberry right_size   --change_id add-flag --files_touched 1 --rubric_score 5 --tradeoff_present false
+tonberry transition   --change_id add-flag --to_status in_progress      # reads has_code from the manifest; persists
+tonberry transition   --change_id add-flag --to_status verified --dry-run   # evaluate-only, no write
+tonberry archive      --change_id add-flag   # MOVES the folder into archive/<date>-add-flag/
 
 # project-scope observability (read-only)
 # list/status/assess share one convention: a positional changes-dir path and
 # --changes_dir are equivalent (default .spectra/changes; --changes_dir wins if both given).
-tonberry list         .spectra/changes                  # or: tonberry list --changes_dir .spectra/changes
+tonberry list         .spectra/changes                  # active only; add --all to include archived
 tonberry status       .spectra/changes --change_id add-flag --mode warn
 tonberry assess       .spectra/changes --repo_loc 60000  # or omit repo_loc to walk the tree
 

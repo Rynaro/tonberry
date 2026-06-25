@@ -28,7 +28,7 @@ import (
 )
 
 // Version is the tonberry build/release version.
-const Version = "0.3.1"
+const Version = "0.4.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -94,10 +94,19 @@ Usage:
         compose_envelope drift_check archive
         list status assess
 
-  tonberry list   [DIR] [--changes_dir DIR] [--project_root DIR]
-      Enumerate change folders: [{change_id,status,tier,drift_checked}].
+      transition / right_size / drift_check PERSIST the manifest by default
+      when the action is allowed/valid (v0.4.0 flip). Pass --dry-run to
+      evaluate-only (the old behavior); --write_manifest still works.
+      propose accepts --has_code (bool); transition READS has_code from the
+      manifest (override with --has_code). archive MOVES the change folder
+      into archive/ (the active folder no longer exists afterward).
+
+  tonberry list   [DIR] [--changes_dir DIR] [--project_root DIR] [--all]
+      Enumerate ACTIVE change folders:
+      [{change_id,status,tier,drift_checked,archived}].
       DIR is the changes dir (default .spectra/changes); positional and
       --changes_dir are equivalent (--changes_dir wins if both are given).
+      --all (alias --include-archived) ALSO lists archived snapshots.
 
   tonberry status [DIR] [--changes_dir DIR] --change_id ID
                   [--project_root DIR] [--mode warn|block]
@@ -327,6 +336,20 @@ func changesDirArg(f flagMap, args []string) string {
 
 func (f flagMap) str(k string) string   { return f[k] }
 func (f flagMap) boolean(k string) bool { return f[k] == "true" || f[k] == "1" }
+
+// has reports whether a flag key was present at all (any value).
+func (f flagMap) has(k string) bool { _, ok := f[k]; return ok }
+
+// boolPtr returns a *bool: nil when the flag is absent (so "unset" is distinct
+// from an explicit false), else a pointer to the parsed boolean. A bare flag
+// (e.g. `--has_code`) is "true"; `--has_code=false` / `--has_code 0` are false.
+func (f flagMap) boolPtr(k string) *bool {
+	if !f.has(k) {
+		return nil
+	}
+	v := f.boolean(k)
+	return &v
+}
 func (f flagMap) integer(k string) int {
 	n, _ := strconv.Atoi(f[k])
 	return n
@@ -377,6 +400,7 @@ func opPropose(f flagMap) (any, error) {
 		Checker:     f.str("checker"),
 		CreatedAt:   f.str("created_at"),
 		Supersedes:  f.str("supersedes"),
+		HasCode:     f.boolPtr("has_code"),
 	})
 }
 
@@ -387,7 +411,8 @@ func opRightSize(f flagMap) (any, error) {
 		FilesTouched:    f.integer("files_touched"),
 		RubricScore:     f.integer("rubric_score"),
 		TradeoffPresent: f.boolean("tradeoff_present"),
-		WriteManifest:   f.boolean("write_manifest"),
+		WriteManifest:   f.boolPtr("write_manifest"),
+		DryRun:          f.boolean("dry_run") || f.boolean("dry-run"),
 	})
 }
 
@@ -397,8 +422,9 @@ func opTransition(f flagMap) (any, error) {
 		ChangeID:      f.str("change_id"),
 		ToStatus:      f.str("to_status"),
 		Actor:         f.str("actor"),
-		HasCode:       f.boolean("has_code"),
-		WriteManifest: f.boolean("write_manifest"),
+		HasCode:       f.boolPtr("has_code"),
+		WriteManifest: f.boolPtr("write_manifest"),
+		DryRun:        f.boolean("dry_run") || f.boolean("dry-run"),
 	})
 }
 
@@ -446,7 +472,8 @@ func opDriftCheck(f flagMap) (any, error) {
 		Checker:         f.str("checker"),
 		SpecOfRecordRef: f.str("spec_of_record_ref"),
 		TreeRoot:        f.str("tree_root"),
-		WriteManifest:   f.boolean("write_manifest"),
+		WriteManifest:   f.boolPtr("write_manifest"),
+		DryRun:          f.boolean("dry_run") || f.boolean("dry-run"),
 	}
 	if ms := f.str("mismatches"); ms != "" {
 		var arr []string
@@ -474,8 +501,9 @@ func opArchive(f flagMap) (any, error) {
 // when neither is present.
 func opList(f flagMap, args []string) (any, error) {
 	return ops.List(ops.ListInput{
-		ChangesDir:  changesDirArg(f, args),
-		ProjectRoot: f.str("project_root"),
+		ChangesDir:      changesDirArg(f, args),
+		ProjectRoot:     f.str("project_root"),
+		IncludeArchived: f.boolean("all") || f.boolean("include_archived") || f.boolean("include-archived"),
 	})
 }
 

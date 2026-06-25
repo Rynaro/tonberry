@@ -86,17 +86,57 @@ func TestArchiveSnapshotAndPromotion(t *testing.T) {
 		t.Errorf("context_delta.change_id = %v", cd["change_id"])
 	}
 
-	// Snapshot manifest is status=archived with archive_path set.
+	// Moved manifest is status=archived with archive_path set.
 	sc, err := manifest.Read(snapDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if sc.Status != manifest.StatusArchived || sc.ArchivePath == nil {
-		t.Errorf("snapshot manifest not archived: %+v", sc)
+		t.Errorf("archived manifest not archived: %+v", sc)
+	}
+
+	// FIX 3: archive MOVES (not copies) — the active change folder must be GONE.
+	if _, err := os.Stat(changeDir); !os.IsNotExist(err) {
+		t.Errorf("archive must MOVE the folder; active %s should no longer exist (stat err=%v)", changeDir, err)
 	}
 
 	// GRACEFUL DEGRADATION (FORGE acceptance gate): no CRYSTALIUM is involved at
 	// all — archive completed and left the promotion intent on disk un-routed.
 	// (There is no crystalium import/call anywhere; this test proves archive is
 	// self-contained.)
+}
+
+// TestArchiveMovesNotCopies isolates the move semantics (ESL §9.2): after archive,
+// the active folder is gone and the archived folder carries the moved content.
+func TestArchiveMovesNotCopies(t *testing.T) {
+	root := t.TempDir()
+	changeDir := filepath.Join(root, ".spectra", "changes", "arch-me")
+	writeVerifiedChange(t, changeDir, true)
+	// A marker file proves the CONTENT was moved, not just the manifest.
+	_ = os.WriteFile(filepath.Join(changeDir, "marker.txt"), []byte("moved-me\n"), 0o644)
+
+	res, err := Archive(changeDir, "2026-06-25", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Active folder gone.
+	if _, err := os.Stat(changeDir); !os.IsNotExist(err) {
+		t.Fatalf("active folder must be gone after move, stat err=%v", err)
+	}
+	// Archived folder present, with the moved marker file and the archived manifest.
+	snapDir := filepath.Join(root, ".spectra", "changes", "archive", "2026-06-25-arch-me")
+	if _, err := os.Stat(filepath.Join(snapDir, "marker.txt")); err != nil {
+		t.Errorf("moved content (marker.txt) missing in archive: %v", err)
+	}
+	if res.ArchivePath != "archive/2026-06-25-arch-me" || res.Status != "archived" {
+		t.Errorf("archive result wrong: %+v", res)
+	}
+	sc, err := manifest.Read(snapDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sc.Status != manifest.StatusArchived {
+		t.Errorf("moved manifest status = %q, want archived", sc.Status)
+	}
 }

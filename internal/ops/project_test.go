@@ -14,7 +14,7 @@ func seedChange(t *testing.T, root, id string, files, rubric int, tradeoff bool)
 	if _, err := Propose(ProposeInput{ProjectRoot: root, ChangeID: id, Maker: "vivi", Checker: "vigil", SpecRef: "spec.md"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := RightSize(RightSizeInput{ProjectRoot: root, ChangeID: id, FilesTouched: files, RubricScore: rubric, TradeoffPresent: tradeoff, WriteManifest: true}); err != nil {
+	if _, err := RightSize(RightSizeInput{ProjectRoot: root, ChangeID: id, FilesTouched: files, RubricScore: rubric, TradeoffPresent: tradeoff}); err != nil {
 		t.Fatal(err)
 	}
 }

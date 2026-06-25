@@ -35,6 +35,10 @@ type ListInput struct {
 	// (resolved relative to ProjectRoot when ProjectRoot is set).
 	ChangesDir  string `json:"changes_dir,omitempty"`
 	ProjectRoot string `json:"project_root,omitempty"`
+	// IncludeArchived, if true, ALSO enumerates archived changes under the
+	// archive/<date>-<change_id>/ snapshot subdir (ESL §9.2). Default false: list
+	// shows ACTIVE changes only.
+	IncludeArchived bool `json:"include_archived,omitempty"`
 }
 
 // ChangeSummary is one row of the list output: the manifest's identity fields.
@@ -44,6 +48,8 @@ type ChangeSummary struct {
 	Status       string `json:"status"`
 	Tier         string `json:"tier"`
 	DriftChecked bool   `json:"drift_checked"`
+	// Archived is true for a row read from the archive/ snapshot subdir.
+	Archived bool `json:"archived"`
 }
 
 // ListOutput is the deterministic, change_id-sorted list of changes.
@@ -64,8 +70,10 @@ func resolveChangesDir(projectRoot, changesDir string) string {
 
 // List enumerates immediate child folders of the changes directory, reads each
 // change.json, and returns a change_id-sorted summary. The archive/ snapshot
-// subdir and any folder without a readable change.json are skipped. Ordering is
-// deterministic (sort by change_id).
+// subdir and any folder without a readable change.json are skipped by default;
+// IncludeArchived ALSO enumerates the archived snapshots (ESL §9.2). Any folder
+// without a readable manifest is skipped. Ordering is deterministic (sort by
+// change_id; archived rows sort alongside active ones).
 func List(in ListInput) (*ListOutput, error) {
 	dir := resolveChangesDir(in.ProjectRoot, in.ChangesDir)
 	out := &ListOutput{ChangesDir: dir, Changes: []ChangeSummary{}}
@@ -99,11 +107,45 @@ func List(in ListInput) (*ListOutput, error) {
 		})
 	}
 
+	if in.IncludeArchived {
+		out.Changes = append(out.Changes, listArchived(dir)...)
+	}
+
 	sort.Slice(out.Changes, func(i, j int) bool {
 		return out.Changes[i].ChangeID < out.Changes[j].ChangeID
 	})
 	out.Count = len(out.Changes)
 	return out, nil
+}
+
+// listArchived enumerates the archived snapshot folders under
+// <changesDir>/archive/<date>-<change_id>/, reading each change.json. Returns the
+// summaries (Archived=true) or an empty slice if no archive/ dir exists. Folders
+// without a readable manifest are skipped. Order is left to the caller's sort.
+func listArchived(changesDir string) []ChangeSummary {
+	rows := []ChangeSummary{}
+	archiveDir := filepath.Join(changesDir, archiveDirName)
+	entries, err := os.ReadDir(archiveDir)
+	if err != nil {
+		return rows // no archive dir yet (or unreadable) => zero archived changes
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		c, rerr := manifest.Read(filepath.Join(archiveDir, e.Name()))
+		if rerr != nil {
+			continue
+		}
+		rows = append(rows, ChangeSummary{
+			ChangeID:     c.ChangeID,
+			Status:       string(c.Status),
+			Tier:         string(c.Tier),
+			DriftChecked: c.DriftCheckedTrue(),
+			Archived:     true,
+		})
+	}
+	return rows
 }
 
 // -- status ----------------------------------------------------------------- //
@@ -216,8 +258,11 @@ type AssessOutput struct {
 func Assess(in AssessInput) (*AssessOutput, error) {
 	changesDir := resolveChangesDir(in.ProjectRoot, in.ChangesDir)
 
-	// change_count + full_ratio from the change manifests.
-	ls, err := List(ListInput{ChangesDir: changesDir})
+	// change_count + full_ratio from the change manifests, counting BOTH active
+	// AND archived changes (ESL §9.2) so archiving never drops the escalation
+	// signal — an archived `full` change still contributes to change_count and the
+	// full_ratio numerator/denominator.
+	ls, err := List(ListInput{ChangesDir: changesDir, IncludeArchived: true})
 	if err != nil {
 		return nil, err
 	}

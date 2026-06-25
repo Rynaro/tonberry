@@ -43,6 +43,45 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
+// TestHasCodeRoundTrip proves the OPTIONAL has_code hint (ESL §3.2) survives a
+// Write/Read round-trip and that an absent has_code reads as false.
+func TestHasCodeRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	specRef := "spec.md"
+	hc := true
+	in := &Change{
+		ESLVersion:       ESLVersion,
+		ChangeID:         "hascode-rt",
+		Status:           StatusProposed,
+		Tier:             TierFull,
+		Maker:            "vivi",
+		Checker:          "vigil",
+		AcceptanceChecks: []AcceptanceCheck{{ID: "AC-1"}},
+		SpecRef:          &specRef,
+		HasCode:          &hc,
+	}
+	if _, err := Write(dir, in); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !out.HasCodeTrue() {
+		t.Errorf("has_code lost in round-trip: %+v", out.HasCode)
+	}
+
+	// Absent has_code reads as false.
+	in.HasCode = nil
+	if _, err := Write(dir, in); err != nil {
+		t.Fatal(err)
+	}
+	out2, _ := Read(dir)
+	if out2.HasCodeTrue() {
+		t.Errorf("absent has_code should read as false, got %+v", out2.HasCode)
+	}
+}
+
 // TestAcceptanceCheckOneOfRoundTrip exercises the oneOf:[string, object]
 // acceptance_checks item shape (ESL §2.5): plain-string, minimal-object, and
 // EARS-object items must all round-trip through Read/Write unchanged.

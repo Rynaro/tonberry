@@ -45,6 +45,10 @@ type ProposeInput struct {
 	Checker     string `json:"checker,omitempty"`
 	CreatedAt   string `json:"created_at,omitempty"`
 	Supersedes  string `json:"supersedes,omitempty"`
+	// HasCode persists the ESL §3.2 lifecycle hint into the manifest so transition
+	// reads it without a per-call flag. *bool: nil (unset) is "no-code default"
+	// without writing has_code; an explicit value is persisted.
+	HasCode *bool `json:"has_code,omitempty"`
 }
 
 // ProposeOutput is the propose result.
@@ -91,6 +95,10 @@ func Propose(in ProposeInput) (*ProposeOutput, error) {
 		s := in.Supersedes
 		c.Supersedes = &s
 	}
+	if in.HasCode != nil {
+		hc := *in.HasCode
+		c.HasCode = &hc
+	}
 	p, err := manifest.Write(dir, c)
 	if err != nil {
 		return nil, err
@@ -114,8 +122,14 @@ type RightSizeInput struct {
 	FilesTouched    int    `json:"files_touched"`
 	RubricScore     int    `json:"rubric_score"`
 	TradeoffPresent bool   `json:"tradeoff_present"`
-	// WriteManifest, if true, persists the tier into the change's manifest.
-	WriteManifest bool `json:"write_manifest,omitempty"`
+	// WriteManifest persists the tier into the change's manifest. As of v0.4.0 the
+	// DEFAULT is persist (when a change_id is given); set DryRun to classify only.
+	// A non-nil WriteManifest is still honored for back-compat. When change_id is
+	// absent the op is pure classification and never writes regardless.
+	WriteManifest *bool `json:"write_manifest,omitempty"`
+	// DryRun, if true, classifies WITHOUT writing the manifest (the old default
+	// when no change_id was given). DryRun wins over WriteManifest.
+	DryRun bool `json:"dry_run,omitempty"`
 }
 
 // RightSizeOutput echoes the deterministic classification.
@@ -125,10 +139,15 @@ type RightSizeOutput struct {
 	Signals       rightsizing.Signals `json:"signals"`
 	Deterministic bool                `json:"deterministic"`
 	ManifestPath  string              `json:"manifest_path,omitempty"`
+	// Persisted reports whether the tier was written to the manifest this call.
+	Persisted bool `json:"persisted"`
 }
 
-// RightSize runs the deterministic gate and (optionally) writes the tier into
-// the manifest. The classification is a pure function of the signals.
+// RightSize runs the deterministic gate and — by default (v0.4.0), when a
+// change_id is given — writes the tier into the manifest. The classification is
+// a pure function of the signals. With no change_id it is pure classification
+// (never writes); --dry-run classifies without writing even when a change_id is
+// given. An explicit write_manifest is honored for back-compat.
 func RightSize(in RightSizeInput) (*RightSizeOutput, error) {
 	res := rightsizing.Classify(rightsizing.Signals{
 		FilesTouched:    in.FilesTouched,
@@ -141,10 +160,20 @@ func RightSize(in RightSizeInput) (*RightSizeOutput, error) {
 		Signals:       res.Signals,
 		Deterministic: res.Deterministic,
 	}
-	if in.WriteManifest {
-		if in.ChangeID == "" {
+
+	// Persist resolution: an explicit write_manifest wins; otherwise persist by
+	// default UNLESS dry-run. Persisting requires a change_id (no id => classify
+	// only, never an error). If write_manifest was explicitly true but no id, that
+	// is a usage error (the old contract).
+	wantWrite := persistByDefault(in.WriteManifest, in.DryRun)
+	if wantWrite && in.ChangeID == "" {
+		if in.WriteManifest != nil && *in.WriteManifest {
 			return nil, fmt.Errorf("change_id is required to write the manifest")
 		}
+		// Default-persist with no change_id: nothing to write — pure classification.
+		return out, nil
+	}
+	if wantWrite {
 		dir := changeDirFor(in.ProjectRoot, in.ChangeID)
 		c, err := manifest.Read(dir)
 		if err != nil {
@@ -156,6 +185,7 @@ func RightSize(in RightSizeInput) (*RightSizeOutput, error) {
 			return nil, err
 		}
 		out.ManifestPath = p
+		out.Persisted = true
 	}
 	return out, nil
 }
@@ -169,10 +199,18 @@ type TransitionInput struct {
 	ToStatus    string `json:"to_status"`
 	Actor       string `json:"actor,omitempty"`
 	// HasCode declares whether the change contains code (the code-states require
-	// it; no-code changes skip in_progress). Defaults false.
-	HasCode bool `json:"has_code,omitempty"`
-	// WriteManifest, if true, persists the new status when the transition is allowed.
-	WriteManifest bool `json:"write_manifest,omitempty"`
+	// it; no-code changes skip in_progress). When nil (unset) the value is READ
+	// from the manifest's has_code hint (ESL §3.2); an explicit value OVERRIDES
+	// the manifest (back-compat). *bool so "not given" is distinct from "false".
+	HasCode *bool `json:"has_code,omitempty"`
+	// WriteManifest, if non-nil and true, persists the new status when the
+	// transition is allowed. As of v0.4.0 the DEFAULT is persist (write the
+	// manifest when the transition is allowed); set DryRun to evaluate-only. A
+	// non-nil WriteManifest is still honored for back-compat.
+	WriteManifest *bool `json:"write_manifest,omitempty"`
+	// DryRun, if true, evaluates the transition WITHOUT writing the manifest (the
+	// old default). DryRun wins over WriteManifest if both are set.
+	DryRun bool `json:"dry_run,omitempty"`
 }
 
 // TransitionOutput is the lifecycle decision.
@@ -183,10 +221,29 @@ type TransitionOutput struct {
 	Reason           string `json:"reason,omitempty"`
 	NextPerformative string `json:"next_performative,omitempty"`
 	ManifestPath     string `json:"manifest_path,omitempty"`
+	// Persisted reports whether the manifest was written this call (false on a
+	// dry-run or a rejected transition).
+	Persisted bool `json:"persisted"`
 }
 
-// Transition reads the manifest, evaluates the requested transition, and
-// (optionally, when allowed) writes the new status.
+// persistByDefault resolves the persist intent for a lifecycle-advancing op
+// (v0.4.0 flip: persist is the DEFAULT). DryRun forces evaluate-only and wins.
+// An explicit writeManifest (non-nil) is honored for back-compat; an absent
+// writeManifest defaults to true (persist).
+func persistByDefault(writeManifest *bool, dryRun bool) bool {
+	if dryRun {
+		return false
+	}
+	if writeManifest != nil {
+		return *writeManifest
+	}
+	return true
+}
+
+// Transition reads the manifest, evaluates the requested transition, and — by
+// default (v0.4.0) — persists the new status when the transition is allowed.
+// has_code is read from the manifest hint (ESL §3.2) unless an explicit input
+// overrides it; --dry-run evaluates without writing.
 func Transition(in TransitionInput) (*TransitionOutput, error) {
 	if in.ChangeID == "" {
 		return nil, fmt.Errorf("change_id is required")
@@ -198,8 +255,14 @@ func Transition(in TransitionInput) (*TransitionOutput, error) {
 	}
 	to := manifest.Status(in.ToStatus)
 
+	// has_code: read from the manifest hint, overridden by an explicit input.
+	hasCode := c.HasCodeTrue()
+	if in.HasCode != nil {
+		hasCode = *in.HasCode
+	}
+
 	// Pre-check the §6.4 archive precondition: archived requires drift_checked.
-	d := lifecycle.Transition(c.Status, to, c.Tier, in.HasCode)
+	d := lifecycle.Transition(c.Status, to, c.Tier, hasCode)
 	if d.Allowed && to == manifest.StatusArchived && !c.DriftCheckedTrue() {
 		d.Allowed = false
 		d.Reason = "archived requires drift_checked=true (ESL §6.4)"
@@ -212,13 +275,14 @@ func Transition(in TransitionInput) (*TransitionOutput, error) {
 		Reason:           d.Reason,
 		NextPerformative: d.NextPerformative,
 	}
-	if d.Allowed && in.WriteManifest {
+	if d.Allowed && persistByDefault(in.WriteManifest, in.DryRun) {
 		c.Status = to
 		p, werr := manifest.Write(dir, c)
 		if werr != nil {
 			return nil, werr
 		}
 		out.ManifestPath = p
+		out.Persisted = true
 	}
 	return out, nil
 }
@@ -322,6 +386,9 @@ func mergeChange(base, patch *manifest.Change) {
 	}
 	if patch.ArchivePath != nil {
 		base.ArchivePath = patch.ArchivePath
+	}
+	if patch.HasCode != nil {
+		base.HasCode = patch.HasCode
 	}
 }
 
@@ -476,8 +543,13 @@ type DriftCheckInput struct {
 	// tonberry does not itself re-run tests; the identity-distinct checker reports
 	// the mismatches it found, and tonberry records the verdict deterministically.
 	Mismatches []string `json:"mismatches,omitempty"`
-	// WriteManifest, if true and no mismatches, sets drift_checked=true.
-	WriteManifest bool `json:"write_manifest,omitempty"`
+	// WriteManifest, when no mismatches, sets drift_checked=true. As of v0.4.0 the
+	// DEFAULT is persist; set DryRun to evaluate-only. A non-nil WriteManifest is
+	// honored for back-compat. (On a mismatch nothing is written regardless — the
+	// verdict is ESCALATE, not a drift_checked flip.)
+	WriteManifest *bool `json:"write_manifest,omitempty"`
+	// DryRun, if true, computes the verdict WITHOUT writing drift_checked.
+	DryRun bool `json:"dry_run,omitempty"`
 }
 
 // DriftCheckOutput reports the verdict.
@@ -487,6 +559,8 @@ type DriftCheckOutput struct {
 	Escalate     bool     `json:"escalate"`
 	NextStatus   string   `json:"next_status,omitempty"`
 	ManifestPath string   `json:"manifest_path,omitempty"`
+	// Persisted reports whether drift_checked=true was written this call.
+	Persisted bool `json:"persisted"`
 }
 
 // DriftCheck enforces the §5/§6.4 identity rule (checker != maker) and records
@@ -522,7 +596,7 @@ func DriftCheck(in DriftCheckInput) (*DriftCheckOutput, error) {
 	}
 	out.DriftChecked = true
 	out.Escalate = false
-	if in.WriteManifest {
+	if persistByDefault(in.WriteManifest, in.DryRun) {
 		t := true
 		c.DriftChecked = &t
 		p, werr := manifest.Write(dir, c)
@@ -530,6 +604,7 @@ func DriftCheck(in DriftCheckInput) (*DriftCheckOutput, error) {
 			return nil, werr
 		}
 		out.ManifestPath = p
+		out.Persisted = true
 	}
 	return out, nil
 }
