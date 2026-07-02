@@ -61,7 +61,8 @@ func resolveAbs(p string) (string, error) {
 	return abs, nil
 }
 
-// New constructs the MCP server with all 8 tools registered.
+// New constructs the MCP server with every tool in ToolNames registered
+// (the registration set is pinned to ToolNames by mcpserver_test.go).
 func New() *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{
 		Name:    ServerName,

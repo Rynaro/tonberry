@@ -3,6 +3,15 @@
 All notable changes to **tonberry** are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses SemVer.
 
+## [Unreleased]
+
+### Fixed
+- `mcpserver.New` doc comment claimed "all 8 tools registered" while 11 are;
+  the comment is now count-free and the registered tool surface is pinned to
+  `ToolNames` by a new in-memory MCP session test
+  (`internal/mcpserver/mcpserver_test.go`), so the count can never silently
+  drift again.
+
 ## [0.4.0] — 2026-06-25
 
 Three evidence-backed lifecycle-op UX fixes surfaced by the ESL dogfood. The
