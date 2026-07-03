@@ -26,7 +26,7 @@ import (
 const ServerName = "tonberry"
 
 // Version is the tonberry build version reported to MCP clients.
-const Version = "0.4.0"
+const Version = "0.5.0"
 
 // ToolNames is the canonical, ordered list of the 11 tools.
 var ToolNames = []string{
@@ -71,7 +71,7 @@ func New() *mcp.Server {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "propose",
-		Description: "Scaffold a change.json (status=proposed) under .spectra/changes/<change_id>/. tier is null until right_size. Pass has_code (bool) to persist the §3.2 lifecycle hint so transition reads it without a per-call flag.",
+		Description: "Scaffold a change.json (status=proposed) under .spectra/changes/<change_id>/. tier is null until right_size. Pass has_code (bool) to persist the §3.2 lifecycle hint so transition reads it without a per-call flag. Pass BOTH memory_preflight_ran (bool) and memory_preflight_records (int >= 0) to persist the OPTIONAL v1.1 recall-before-authoring record (§2.6); omit both to skip it (graceful-skip, still conformant).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ops.ProposeInput) (*mcp.CallToolResult, ops.ProposeOutput, error) {
 		out, err := ops.Propose(in)
 		return result(err), deref(out), err
@@ -111,7 +111,7 @@ func New() *mcp.Server {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "verify",
-		Description: "Run the 6 MUST ESL conformance checks C1–C6 (incl. maker!=checker as C4) plus the SHOULD advisory C7 (EARS acceptance lint; never blocks). Parity-locked to esl-conformance.sh. mode=warn|block; exit_code 0/3.",
+		Description: "Run the 6 MUST ESL conformance checks C1–C6 (incl. maker!=checker as C4) plus the SHOULD advisory checks C7 (EARS acceptance lint) and C8 (fresh-context verification attestation) — neither ever blocks. Parity-locked to esl-conformance.sh. mode=warn|block; exit_code 0/3.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ops.VerifyInput) (*mcp.CallToolResult, ops.VerifyOutput, error) {
 		out, err := ops.Verify(in, resolveAbs)
 		return result(err), deref(out), err

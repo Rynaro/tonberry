@@ -1,0 +1,12 @@
+{
+  "esl_version": "1.1",
+  "change_id": "fresh-context-same-session",
+  "status": "verified",
+  "tier": "trivial",
+  "maker": "vivi",
+  "checker": "kupo-verifier",
+  "acceptance_checks": [
+    { "id": "AC-1", "verify_method": "n/a — C8 advisory-warning fixture" }
+  ],
+  "spec_ref": null
+}

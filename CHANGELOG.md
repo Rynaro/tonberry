@@ -3,6 +3,96 @@
 All notable changes to **tonberry** are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses SemVer.
 
+## [0.5.0] — 2026-07-03
+
+**ESL 1.1 re-vendor + C8 support.** Closes the documented parity drift between
+tonberry's vendored checker and the canonical `eidolons-esl` checker that was
+deliberately created when `eidolons-esl` shipped v1.1 (`Rynaro/eidolons-esl#2`
+— that release's own PARITY NOTE flagged this as expected, non-regression
+drift "until tonberry ships a 0.5 re-vendor"). `ESL_VERSION` `1.0` → `1.1`.
+
+### Added
+
+- **Check C8 (SHOULD, advisory) — fresh-context verification attestation.** A
+  faithful Go port of the bash oracle's new C8 (`internal/conformance`),
+  extending C4 from identity-inequality (maker ≠ checker) to
+  context-separation: when `status` ∈ `{verified, archived}` **AND** a
+  `verify.envelope.json` sidecar is present, its `ise.verification` sub-block
+  (`{fresh_context, checker, transcript_access}`) SHOULD show
+  `fresh_context == true`, `transcript_access ∈ {none, artifact-only}`, and
+  `checker != maker`. No envelope present → **no C8 record at all** (skip, not
+  fail — C8 only evaluates once verification is claimed). Same discipline as
+  C7: **C8 NEVER changes the exit code**, even under `--mode block`. Record
+  name (`fresh_context_verification_attested`), reason strings, and the
+  no-envelope skip behavior are byte-parity-matched to the bash oracle.
+- **`memory_preflight` optional manifest field** — `internal/manifest.Change`
+  gained `MemoryPreflight *MemoryPreflight` (`{ran bool, records int}`,
+  `additionalProperties:false` in the schema, both fields required together
+  when the object is present). Absence is fully conformant (graceful-skip
+  when no memory MCP is available). `manifest.Validate` enforces
+  `records >= 0`. `propose` accepts `--memory_preflight_ran` +
+  `--memory_preflight_records` (MCP args `memory_preflight_ran` /
+  `memory_preflight_records`) — giving only one of the pair is a usage error;
+  giving neither omits the field entirely. `compose_manifest --patch` also
+  carries `memory_preflight` through the existing generic manifest-merge path
+  (no special-casing needed there).
+- **5 new parity fixtures** vendored verbatim from `eidolons-esl
+  conformance/tests/`: `conformant/fresh-context-attested` (C8 `ok`),
+  `conformant/fresh-context-no-envelope` (C8 skip — no record),
+  `failing/fresh-context-same-session` (C8 `fail` in `--json`, YET **exit 0**
+  in block mode — the load-bearing C8 advisory proof, mirroring
+  `ears-missing-field` for C7), `conformant/memory-preflight-recorded`, and
+  `conformant/memory-preflight-skipped` (both schema-valid, neither a C1–C6
+  gate). `fixtures/README.md` documents all five.
+
+### Changed
+
+- **Re-vendored the oracle** — `parity/esl-conformance.sh` re-synced
+  byte-for-byte from `eidolons-esl@main` (`ESL_CHECKER_VERSION` `1.0.0` →
+  `1.1.0`, the new C8 block), preserving the vendored-copy's canonical-source
+  header note. The CI vendored-oracle drift guard (comment-stripped body diff
+  against `eidolons-esl@main`) is clean again.
+- `internal/conformance.CheckerVersion` bumped `1.0.0` → `1.1.0` to match.
+- `internal/manifest.ESLVersion` (the `esl_version` stamp newly-scaffolded
+  manifests carry) bumped `1.0` → `1.1`. v1.1 is additive-only — a
+  `change.json` declaring either `"1.0"` or `"1.1"` stays conformant; the
+  checker does not branch on the value (unchanged from v1.0).
+- **`ESL_VERSION`** (repo stamp file) and the tonberry release version
+  (`cmd/tonberry` CLI `version`, `internal/mcpserver` MCP-reported version)
+  bumped to **0.5.0**.
+- README + `verify`/`propose` MCP tool descriptions + CLI `--help` document C8
+  and `memory_preflight`.
+
+### Tests
+
+- `internal/conformance` — 4 new C8 unit tests (`ok` attestation, no-envelope
+  skip, the same-session advisory proof incl. the C4-passes-but-C8-fails
+  cross-check, and the status-gating no-record case for `proposed`);
+  `TestConformantExitZeroInBlock` now covers all 10 conformant fixtures
+  (exit-0-in-block is the actual conformance contract); a new
+  `TestConformantZeroFindings` isolates the STRONGER zero-findings claim to
+  the fixtures unaffected by C8 — `lite-add-flag`, `full-new-subsystem`, and
+  `lite-ears-complete` are `eidolons-esl examples/` fixtures authored before
+  C8 existed, so they now legitimately carry a C8 advisory fail (still exit 0)
+  until upstream re-vendors them with an attestation — this is v1.1's
+  additive-only design working as intended, not a fixture bug.
+- `internal/manifest` — `memory_preflight` round-trips (incl. the
+  `ran:false,records:0` graceful-skip form as a distinct explicit state from
+  absence-is-nil); `Validate` rejects `records < 0`.
+- `internal/ops` — `propose` persists `memory_preflight` only when both fields
+  are given; giving exactly one is a usage error.
+- **Parity**: `TONBERRY_REQUIRE_PARITY=1 go test ./...` passes across all 22
+  fixtures (17 pre-existing + 5 new) × 2 modes = 44 fixture×mode combinations,
+  including the new C8 fixtures.
+
+### Deferred
+
+- No CRYSTALIUM wiring at `archive` (unchanged from v0.1.0 — the
+  promotion-intent envelope emission stays as-is; deferred to a future
+  release).
+
+[0.5.0]: https://github.com/Rynaro/tonberry/releases/tag/v0.5.0
+
 ## [0.4.0] — 2026-06-25
 
 Three evidence-backed lifecycle-op UX fixes surfaced by the ESL dogfood. The

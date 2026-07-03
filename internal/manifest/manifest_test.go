@@ -82,6 +82,90 @@ func TestHasCodeRoundTrip(t *testing.T) {
 	}
 }
 
+// TestMemoryPreflightRoundTrip proves the OPTIONAL v1.1 memory_preflight
+// record (ESL §2.6) survives a Write/Read round-trip, including the
+// records:0 graceful-skip case, and that an absent memory_preflight is nil
+// (not a zero-value struct) after round-trip.
+func TestMemoryPreflightRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	specRef := "spec.md"
+	in := &Change{
+		ESLVersion:       ESLVersion,
+		ChangeID:         "preflight-rt",
+		Status:           StatusProposed,
+		Tier:             TierTrivial,
+		Maker:            "vivi",
+		Checker:          "vigil",
+		AcceptanceChecks: []AcceptanceCheck{{ID: "AC-1"}},
+		SpecRef:          &specRef,
+		MemoryPreflight:  &MemoryPreflight{Ran: true, Records: 3},
+	}
+	if _, err := Write(dir, in); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.MemoryPreflight == nil || !out.MemoryPreflight.Ran || out.MemoryPreflight.Records != 3 {
+		t.Errorf("memory_preflight lost in round-trip: %+v", out.MemoryPreflight)
+	}
+
+	// The graceful-skip form: ran:false, records:0 is a distinct, valid,
+	// explicitly-recorded state — NOT the same as an absent field.
+	in.MemoryPreflight = &MemoryPreflight{Ran: false, Records: 0}
+	if _, err := Write(dir, in); err != nil {
+		t.Fatal(err)
+	}
+	out2, err := Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out2.MemoryPreflight == nil || out2.MemoryPreflight.Ran || out2.MemoryPreflight.Records != 0 {
+		t.Errorf("memory_preflight graceful-skip form lost in round-trip: %+v", out2.MemoryPreflight)
+	}
+
+	// Absence: nil stays nil (the field is omitempty and fully conformant absent).
+	in.MemoryPreflight = nil
+	if _, err := Write(dir, in); err != nil {
+		t.Fatal(err)
+	}
+	out3, err := Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out3.MemoryPreflight != nil {
+		t.Errorf("absent memory_preflight should read as nil, got %+v", out3.MemoryPreflight)
+	}
+}
+
+// TestValidateRejectsNegativeMemoryPreflightRecords proves the schema's
+// `records: minimum 0` constraint (ESL §2.6) is enforced by Validate.
+func TestValidateRejectsNegativeMemoryPreflightRecords(t *testing.T) {
+	specRef := "spec.md"
+	c := &Change{
+		ESLVersion:       ESLVersion,
+		ChangeID:         "bad-preflight",
+		Status:           StatusProposed,
+		Tier:             TierTrivial,
+		Maker:            "vivi",
+		Checker:          "vigil",
+		AcceptanceChecks: []AcceptanceCheck{{ID: "AC-1"}},
+		SpecRef:          &specRef,
+		MemoryPreflight:  &MemoryPreflight{Ran: true, Records: -1},
+	}
+	errs := Validate(c)
+	found := false
+	for _, e := range errs {
+		if contains(e, "memory_preflight") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a memory_preflight.records validation error, got %v", errs)
+	}
+}
+
 // TestAcceptanceCheckOneOfRoundTrip exercises the oneOf:[string, object]
 // acceptance_checks item shape (ESL §2.5): plain-string, minimal-object, and
 // EARS-object items must all round-trip through Read/Write unchanged.
