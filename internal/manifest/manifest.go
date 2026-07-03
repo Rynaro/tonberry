@@ -17,7 +17,7 @@ import (
 )
 
 // ESLVersion is the ESL document version this build targets (the ESL_VERSION stamp).
-const ESLVersion = "1.0"
+const ESLVersion = "1.1"
 
 // ManifestFile is the canonical change-manifest filename within a change folder.
 const ManifestFile = "change.json"
@@ -133,6 +133,18 @@ func (a AcceptanceCheck) IsEARS() bool {
 	return a.Raw == "" && (a.Given != "" || a.When != "" || a.Then != "")
 }
 
+// MemoryPreflight is the OPTIONAL v1.1 recall-before-authoring record (ESL
+// §2.6, schema/change.v1.json: `memory_preflight`), recorded when a change
+// enters `proposed`. Ran records that a CRYSTALIUM (or equivalent memory-MCP)
+// preflight query executed, regardless of whether it returned any records;
+// Records is the count of relevant records recalled (0 is a valid, conformant
+// result — an empty recall is not a failure). additionalProperties:false in
+// the schema, so both fields are always carried together.
+type MemoryPreflight struct {
+	Ran     bool `json:"ran"`
+	Records int  `json:"records"`
+}
+
 // Change is the in-memory shape of change.json. Field tags mirror
 // schema/change.v1.json exactly; tonberry does not add fields the schema forbids
 // (the schema is additionalProperties:false).
@@ -160,6 +172,11 @@ type Change struct {
 	// transition (an explicit per-transition flag overrides it). *bool so "unset"
 	// (nil) is distinct from an explicit false.
 	HasCode *bool `json:"has_code,omitempty"`
+	// MemoryPreflight is the OPTIONAL v1.1 recall-before-authoring record (ESL
+	// §2.6). nil (absent) is fully conformant — graceful-skip when no memory
+	// MCP is available or the check has not yet been adopted. Not gated by any
+	// C1–C6 MUST check; schema-validated when present.
+	MemoryPreflight *MemoryPreflight `json:"memory_preflight,omitempty"`
 }
 
 var changeIDRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
@@ -284,6 +301,9 @@ func Validate(c *Change) []string {
 	}
 	// spec_ref is required by the schema (string or null); a missing key decodes
 	// to nil here, which is the legal `null`. There is no further constraint.
+	if c.MemoryPreflight != nil && c.MemoryPreflight.Records < 0 {
+		errs = append(errs, "memory_preflight.records must be >= 0")
+	}
 	return errs
 }
 

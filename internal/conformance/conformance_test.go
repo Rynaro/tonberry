@@ -46,12 +46,44 @@ func checkFixture(t *testing.T, group, name string, mode Mode) Report {
 	return Check(abs, mode)
 }
 
+// conformantFixtures is every fixture under fixtures/conformant/: "conformant"
+// means exit 0 even in --mode block — it does NOT mean zero findings (a
+// SHOULD-level advisory fail, e.g. C7/C8, never blocks; see
+// TestConformantZeroFindings below for the stronger, narrower claim).
+var conformantFixtures = []string{
+	"trivial-typo-fix", "lite-add-flag", "full-new-subsystem", "trivial-no-spec",
+	"ears-complete", "lite-ears-complete",
+	"fresh-context-attested", "fresh-context-no-envelope",
+	"memory-preflight-recorded", "memory-preflight-skipped",
+}
+
 func TestConformantExitZeroInBlock(t *testing.T) {
-	for _, name := range []string{"trivial-typo-fix", "lite-add-flag", "full-new-subsystem", "trivial-no-spec", "ears-complete", "lite-ears-complete"} {
+	for _, name := range conformantFixtures {
 		rep := checkFixture(t, "conformant", name, ModeBlock)
 		if rep.ExitCode != 0 {
 			t.Errorf("conformant %s: exit %d, want 0", name, rep.ExitCode)
 		}
+	}
+}
+
+// TestConformantZeroFindings is the STRONGER claim (zero findings of any kind,
+// not just "no MUST fail") for the fixtures that genuinely predate no advisory
+// checks OR were authored with v1.1 attestation in mind. `lite-add-flag`,
+// `full-new-subsystem`, and `lite-ears-complete` are EXCLUDED here: they are
+// eidolons-esl `examples/` fixtures authored before C8 existed (pre-v1.1) —
+// their `verify.envelope.json` has no `ise.verification` sub-block, so C8
+// legitimately records a SHOULD-level advisory fail on them now (still exit 0;
+// see TestConformantExitZeroInBlock). This is the intended, additive-only
+// behavior of a new advisory check landing on pre-existing conformant history,
+// not a fixture bug — re-vendoring the upstream examples with an attestation
+// is upstream's call, not tonberry's to fabricate.
+func TestConformantZeroFindings(t *testing.T) {
+	for _, name := range []string{
+		"trivial-typo-fix", "trivial-no-spec", "ears-complete",
+		"fresh-context-attested", "fresh-context-no-envelope",
+		"memory-preflight-recorded", "memory-preflight-skipped",
+	} {
+		rep := checkFixture(t, "conformant", name, ModeBlock)
 		if rep.HasFail {
 			t.Errorf("conformant %s: unexpected fail finding(s): %+v", name, rep.Results)
 		}
@@ -103,6 +135,79 @@ func TestC7PlainStringNoFinding(t *testing.T) {
 		rep := checkFixture(t, "conformant", name, ModeBlock)
 		if _, has := findResult(rep, "C7"); has {
 			t.Errorf("%s: expected NO C7 finding (minimal-object acceptance form), got %+v", name, rep.Results)
+		}
+	}
+}
+
+// TestC8FreshContextAttested: a verify.envelope.json with a complete, honest
+// ise.verification sub-block (fresh_context:true, checker!=maker,
+// transcript_access:artifact-only) → C8 ok, exit 0.
+func TestC8FreshContextAttested(t *testing.T) {
+	rep := checkFixture(t, "conformant", "fresh-context-attested", ModeBlock)
+	r, ok := findResult(rep, "C8")
+	if !ok {
+		t.Fatalf("fresh-context-attested: expected a C8 finding, got %+v", rep.Results)
+	}
+	if r.Level != "SHOULD" {
+		t.Errorf("fresh-context-attested: C8 level = %q, want SHOULD", r.Level)
+	}
+	if r.Status != "ok" {
+		t.Errorf("fresh-context-attested: C8 status = %q, want ok (reason=%q)", r.Status, r.Reason)
+	}
+	if rep.ExitCode != 0 {
+		t.Errorf("fresh-context-attested block exit = %d, want 0", rep.ExitCode)
+	}
+}
+
+// TestC8NoEnvelopeNoRecord: status=verified with NO verify.envelope.json at all
+// produces NO C8 record (skip, not fail) — distinct from an absent
+// ise.verification sub-block inside a present envelope, which IS a fail.
+func TestC8NoEnvelopeNoRecord(t *testing.T) {
+	rep := checkFixture(t, "conformant", "fresh-context-no-envelope", ModeBlock)
+	if _, has := findResult(rep, "C8"); has {
+		t.Errorf("fresh-context-no-envelope: expected NO C8 finding (no envelope present), got %+v", rep.Results)
+	}
+	if rep.ExitCode != 0 || rep.HasFail {
+		t.Errorf("fresh-context-no-envelope: expected clean conformant report, got exit=%d hasFail=%v results=%+v", rep.ExitCode, rep.HasFail, rep.Results)
+	}
+}
+
+// TestC8FreshContextSameSessionAdvisory is the LOAD-BEARING advisory proof for
+// C8 (mirroring TestC7EARSMissingFieldAdvisory): a genuine C8 fail must NOT
+// escalate the exit code — exit 0 even in --mode block, because C8 is
+// SHOULD-level and only the MUST checks C1–C6 block. This fixture also proves
+// C8 is a STRICTER check than C4: manifest-level maker!=checker holds (C4 ok),
+// yet the attestation reveals same-session self-review (C8 fail).
+func TestC8FreshContextSameSessionAdvisory(t *testing.T) {
+	rep := checkFixture(t, "failing", "fresh-context-same-session", ModeBlock)
+	c4, ok := findResult(rep, "C4")
+	if !ok || c4.Status != "ok" {
+		t.Fatalf("fresh-context-same-session: expected C4 ok (manifest-level maker!=checker), got %+v", rep.Results)
+	}
+	c8, ok := findResult(rep, "C8")
+	if !ok || c8.Status != "fail" {
+		t.Fatalf("fresh-context-same-session: expected C8 fail, got %+v", rep.Results)
+	}
+	if c8.Level != "SHOULD" {
+		t.Errorf("fresh-context-same-session: C8 level = %q, want SHOULD", c8.Level)
+	}
+	if rep.ExitCode != 0 {
+		t.Errorf("ADVISORY VIOLATION: fresh-context-same-session block exit = %d, want 0 (C8 must never block)", rep.ExitCode)
+	}
+	if !rep.HasFail {
+		t.Errorf("fresh-context-same-session: HasFail should be true (the C8 warning is still reported)")
+	}
+}
+
+// TestC8OnlyAppliesAtVerifiedOrArchived: a proposed-status change (even one that
+// happens to carry an ise.verification-shaped file, which none of our fixtures
+// do) must never record a C8 finding — the memory_preflight fixtures are
+// proposed-status and have no verify envelope, so C8 must be silent.
+func TestC8OnlyAppliesAtVerifiedOrArchived(t *testing.T) {
+	for _, name := range []string{"memory-preflight-recorded", "memory-preflight-skipped"} {
+		rep := checkFixture(t, "conformant", name, ModeBlock)
+		if _, has := findResult(rep, "C8"); has {
+			t.Errorf("%s: expected NO C8 finding (status=proposed), got %+v", name, rep.Results)
 		}
 	}
 }

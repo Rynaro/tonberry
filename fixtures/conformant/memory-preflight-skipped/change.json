@@ -1,0 +1,13 @@
+{
+  "esl_version": "1.1",
+  "change_id": "memory-preflight-skipped",
+  "status": "proposed",
+  "tier": "trivial",
+  "maker": "kupo",
+  "checker": "vigil",
+  "acceptance_checks": [
+    { "id": "AC-1", "verify_method": "n/a — memory_preflight graceful-skip fixture" }
+  ],
+  "spec_ref": null,
+  "memory_preflight": { "ran": false, "records": 0 }
+}

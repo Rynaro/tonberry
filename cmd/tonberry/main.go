@@ -28,7 +28,7 @@ import (
 )
 
 // Version is the tonberry build/release version.
-const Version = "0.4.0"
+const Version = "0.5.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -85,7 +85,9 @@ Usage:
       Run the stdio MCP server (the 11 tonberry tools).
 
   tonberry verify <change-dir> [--mode warn|block] [--json]
-      Run the 6 ESL conformance checks C1–C6 against a change folder.
+      Run the 6 MUST ESL conformance checks C1–C6 plus the SHOULD advisory
+      checks C7 (EARS lint) and C8 (fresh-context attestation) against a
+      change folder. C7/C8 never affect the exit code.
       Exit: 0 conformant / 1 usage error / 3 hard violation (--mode block).
 
   tonberry <op> [--key value ...]
@@ -100,6 +102,9 @@ Usage:
       propose accepts --has_code (bool); transition READS has_code from the
       manifest (override with --has_code). archive MOVES the change folder
       into archive/ (the active folder no longer exists afterward).
+      propose accepts --memory_preflight_ran (bool) + --memory_preflight_records
+      (int), given together, to persist the OPTIONAL v1.1 recall-before-
+      authoring record (omit both to skip it; still conformant).
 
   tonberry list   [DIR] [--changes_dir DIR] [--project_root DIR] [--all]
       Enumerate ACTIVE change folders:
@@ -354,6 +359,16 @@ func (f flagMap) integer(k string) int {
 	n, _ := strconv.Atoi(f[k])
 	return n
 }
+
+// intPtr returns a *int: nil when the flag is absent (so "unset" is distinct
+// from an explicit 0), else a pointer to the parsed integer.
+func (f flagMap) intPtr(k string) *int {
+	if !f.has(k) {
+		return nil
+	}
+	n := f.integer(k)
+	return &n
+}
 func (f flagMap) float(k string) float64 {
 	v, _ := strconv.ParseFloat(f[k], 64)
 	return v
@@ -393,14 +408,16 @@ func emitJSON(v any) {
 
 func opPropose(f flagMap) (any, error) {
 	return ops.Propose(ops.ProposeInput{
-		ProjectRoot: f.str("project_root"),
-		ChangeID:    f.str("change_id"),
-		Maker:       f.str("maker"),
-		SpecRef:     f.str("spec_ref"),
-		Checker:     f.str("checker"),
-		CreatedAt:   f.str("created_at"),
-		Supersedes:  f.str("supersedes"),
-		HasCode:     f.boolPtr("has_code"),
+		ProjectRoot:            f.str("project_root"),
+		ChangeID:               f.str("change_id"),
+		Maker:                  f.str("maker"),
+		SpecRef:                f.str("spec_ref"),
+		Checker:                f.str("checker"),
+		CreatedAt:              f.str("created_at"),
+		Supersedes:             f.str("supersedes"),
+		HasCode:                f.boolPtr("has_code"),
+		MemoryPreflightRan:     f.boolPtr("memory_preflight_ran"),
+		MemoryPreflightRecords: f.intPtr("memory_preflight_records"),
 	})
 }
 

@@ -1,0 +1,49 @@
+{
+  "envelope_version": "1.0",
+  "message_id": "00000000-0000-4000-8000-0000000000c8",
+  "thread_id": "00000000-0000-4000-8000-0000000000c8",
+  "parent_id": null,
+  "from": {
+    "eidolon": "kupo-verifier",
+    "version": "1.0.0"
+  },
+  "to": {
+    "eidolon": "orchestrator",
+    "version": "1.0"
+  },
+  "performative": "INFORM",
+  "edge_origin": "roster",
+  "objective": "verify_pass with a fresh-context attestation: separate session, artifact-only transcript access, checker != maker.",
+  "artifact": {
+    "kind": "edit-proposal",
+    "schema_version": "1.0",
+    "path": "change.json",
+    "sha256": "PARENT_FILLS_SHA256",
+    "size_bytes": "PARENT_FILLS_SIZE"
+  },
+  "context_delta": {
+    "token_budget": 1000,
+    "tokens_used": 40,
+    "input_handles": [],
+    "summary": "C8 positive control: fresh_context=true, checker(kupo-verifier)!=maker(vivi), transcript_access=artifact-only."
+  },
+  "constraints": {
+    "trust_level": "standard"
+  },
+  "integrity": {
+    "method": "sha256",
+    "value": "PARENT_FILLS_SHA256"
+  },
+  "ise": {
+    "verification": {
+      "fresh_context": true,
+      "checker": "kupo-verifier",
+      "transcript_access": "artifact-only"
+    }
+  },
+  "trace": {
+    "ts": "2026-07-02T12:00:00Z",
+    "host": "claude-code",
+    "tier": "standard"
+  }
+}

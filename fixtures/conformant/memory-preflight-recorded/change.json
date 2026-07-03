@@ -1,0 +1,13 @@
+{
+  "esl_version": "1.1",
+  "change_id": "memory-preflight-recorded",
+  "status": "proposed",
+  "tier": "trivial",
+  "maker": "vivi",
+  "checker": "vigil",
+  "acceptance_checks": [
+    { "id": "AC-1", "verify_method": "n/a — memory_preflight schema-acceptance fixture" }
+  ],
+  "spec_ref": null,
+  "memory_preflight": { "ran": true, "records": 3 }
+}

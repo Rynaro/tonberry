@@ -5,7 +5,7 @@ Lifecycle](https://github.com/Rynaro/eidolons-esl)). A thin, single-binary Go MC
 that **composes** ESL change folders and **enforces** the lifecycle — the
 programmatic sibling of the ESL spec + its bash conformance checker.
 
-`ESL_VERSION` = `1.0` · sibling of ECL / EIIS · opt-in.
+`ESL_VERSION` = `1.1` · sibling of ECL / EIIS · opt-in.
 
 ---
 
@@ -44,12 +44,12 @@ The only schema tonberry owns is the `status`/`tier` enums in
 
 | Tool | Purpose |
 |------|---------|
-| `propose` | Scaffold a `change.json` (status `proposed`) under `.spectra/changes/<change_id>/`. tier is null until `right_size`. Pass `--has_code` to persist the §3.2 lifecycle hint so `transition` reads it without a per-call flag. |
+| `propose` | Scaffold a `change.json` (status `proposed`) under `.spectra/changes/<change_id>/`. tier is null until `right_size`. Pass `--has_code` to persist the §3.2 lifecycle hint so `transition` reads it without a per-call flag. Pass BOTH `--memory_preflight_ran` and `--memory_preflight_records` to persist the OPTIONAL v1.1 recall-before-authoring record (§2.6); omit both to skip it (graceful-skip, still conformant). |
 | `right_size` | Deterministic ESL §4 gate: `(files_touched, rubric_score/12, tradeoff_present)` → `trivial`/`lite`/`full`. Same signals always yield the same tier. **PERSISTS the tier by default** when a `change_id` is given (`--dry-run` classifies only). |
 | `transition` | Advance `status` honoring §3 skip-rules (lite/trivial skip `deliberated`; code-states require code; `archived` requires `drift_checked`). `has_code` is **read from the manifest** hint (override with an explicit `--has_code`). **PERSISTS by default** when allowed (`--dry-run` evaluates only). |
 | `compose_manifest` | Write/validate `change.json` against the ESL-owned `change.v1.json` (references `spec_ref`; never inlines the SPECTRA schema). |
 | `compose_envelope` | Emit an ECL sidecar `*.envelope.json` naming the §7.2 performative for a transition. |
-| `verify` | Run the six MUST conformance checks **C1–C6** (incl. maker≠checker as C4) plus the SHOULD advisory **C7** (EARS acceptance lint). `--mode warn\|block`, `--json`. **Parity-locked** to `esl-conformance.sh`. C7 is advisory — it never changes the exit code (only C1–C6 block). |
+| `verify` | Run the six MUST conformance checks **C1–C6** (incl. maker≠checker as C4) plus the SHOULD advisory **C7** (EARS acceptance lint) and **C8** (fresh-context verification attestation, v1.1). `--mode warn\|block`, `--json`. **Parity-locked** to `esl-conformance.sh`. C7/C8 are advisory — they never change the exit code (only C1–C6 block). |
 | `drift_check` | Identity-distinct checker (checker ≠ maker) records the drift verdict; mismatch → `ESCALATE` to `in_progress`; match → `drift_checked=true`. **PERSISTS by default** on a clean verdict (`--dry-run` evaluates only). |
 | `archive` | **MOVE** the change folder → `archive/<date>-<change_id>/` (the active folder no longer exists afterward), set `status=archived` + `archive_path`, compose the **promotion-intent** ECL envelope. Requires `drift_checked=true`. Never calls CRYSTALIUM. |
 
@@ -76,6 +76,27 @@ is **SHOULD-level** — a C7-only failure stays **exit 0 even under `--mode bloc
 (only C1–C6 block). Plain-string and minimal `{id, verify_method}` items produce
 **no** C7 finding. C7 is byte-identically parity-locked to the bash oracle.
 
+### Fresh-context verification attestation + `memory_preflight` (v0.5.0, ESL v1.1)
+
+`verify`'s check **C8** extends C4 from *identity*-inequality (maker ≠ checker)
+to *context*-separation: when `status` ∈ `{verified, archived}` **AND** a
+`verify.envelope.json` sidecar is present, its `ise.verification` sub-block
+(`{fresh_context, checker, transcript_access}`) SHOULD show
+`fresh_context == true`, `transcript_access ∈ {none, artifact-only}`, and
+`checker != maker`. No envelope at all → **no C8 record** (skip, not fail) — C8
+only evaluates once verification is claimed. Like C7, C8 is **SHOULD-level** and
+**never changes the exit code**, and is byte-identically parity-locked to the
+bash oracle.
+
+`change.json` MAY also carry an OPTIONAL `memory_preflight: {ran, records}`
+object (ESL §2.6), recorded when a change enters `proposed`: `ran` records that
+a CRYSTALIUM (or equivalent memory-MCP) recall-before-authoring query executed;
+`records` is the count recalled (`0` is a valid, conformant result). It is
+schema-validated when present but gates no C1–C6 MUST check; absence is fully
+conformant. `propose` accepts `--memory_preflight_ran` + `--memory_preflight_records`
+(given together) to persist it; `compose_manifest --patch` also carries it
+through the generic manifest-merge path.
+
 ### The escalation lever (advisory → forced)
 
 ESL is **advisory by default** (`verify --mode warn`) and **forced on demand**
@@ -94,10 +115,11 @@ signals REUSE the §4.2 family (no new vocabulary, mechanical not LLM-judged).
 
 `tonberry verify` is a behavioral re-implementation of the normative
 `conformance/esl-conformance.sh` from `Rynaro/eidolons-esl`. For every change
-folder, the two MUST agree on the six checks (ids, MUST/SHOULD level, ok/fail
-verdict, semantics), the exit codes (`0` conformant / `1` usage / `3` block; `2`
-reserved), and the `--json` shape. **The bash checker is authoritative; on any
-disagreement tonberry is the bug.**
+folder, the two MUST agree on the eight checks — C1–C6 (MUST) plus the SHOULD
+advisory C7/C8 (ids, MUST/SHOULD level, ok/fail verdict, semantics), the exit
+codes (`0` conformant / `1` usage / `3` block; `2` reserved), and the `--json`
+shape. **The bash checker is authoritative; on any disagreement tonberry is the
+bug.**
 
 This is locked mechanically:
 
@@ -121,7 +143,10 @@ tonberry serve
 # 2. one-shot CLI for any op (JSON result to stdout)
 # right_size / transition / drift_check PERSIST by default (v0.4.0); add --dry-run to
 # evaluate-only. propose --has_code persists the §3.2 hint; transition then reads it.
-tonberry propose      --change_id add-flag --maker vivi --spec_ref spec.md --checker vigil --has_code
+# propose --memory_preflight_ran + --memory_preflight_records (given together) persist
+# the OPTIONAL v1.1 recall-before-authoring record (§2.6).
+tonberry propose      --change_id add-flag --maker vivi --spec_ref spec.md --checker vigil --has_code \
+                      --memory_preflight_ran --memory_preflight_records 2
 tonberry right_size   --change_id add-flag --files_touched 1 --rubric_score 5 --tradeoff_present false
 tonberry transition   --change_id add-flag --to_status in_progress      # reads has_code from the manifest; persists
 tonberry transition   --change_id add-flag --to_status verified --dry-run   # evaluate-only, no write
@@ -178,7 +203,7 @@ docker build -t tonberry:dev .                                     # ~13 MB dist
 cmd/tonberry/main.go       arg dispatch: serve / verify / <op>
 internal/lifecycle/        §3 state machine + skip-rules (transition)
 internal/rightsizing/      §4 deterministic 3-signal gate (right_size)
-internal/conformance/      the 6 checks C1–C6 — the bash-parity surface (verify)
+internal/conformance/      C1–C6 (MUST) + C7/C8 (SHOULD) — the bash-parity surface (verify)
 internal/manifest/         change.json read/write + change.v1.json validation
 internal/envelope/         ECL sidecar compose (name performatives; no schema re-decl)
 internal/archive/          snapshot + promotion-intent compose

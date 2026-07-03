@@ -24,7 +24,7 @@
 #   -h, --help      Print this help and exit 0.
 #   --version       Print the checker version and exit 0.
 #
-# Exit codes (ESL v1.0 §8.3):
+# Exit codes (ESL v1.1 §8.3; unchanged since v1.0):
 #   0  Conformant, or warnings-only under --mode warn.
 #   1  Usage error (bad args, missing change folder).
 #   3  Hard violation under --mode block.
@@ -38,7 +38,7 @@
 set -u
 # We deliberately do not `set -e`; we collect every finding before deciding.
 
-ESL_CHECKER_VERSION="1.0.0"
+ESL_CHECKER_VERSION="1.1.0"
 
 # The closed ECL v1.0 ten-performative set, vendored as a constant. This is a
 # REFERENCE to ECL, NOT an ESL-owned enumeration: see schemas/performative.v1.json
@@ -315,6 +315,61 @@ if [ "$CHANGE_JSON_OK" -eq 1 ] && [ "$M_AC_COUNT" -gt 0 ]; then
     fi
     aci=$((aci + 1))
   done
+fi
+
+# -- Check 8: fresh-context verification attestation (SHOULD, NEW in v1.1) -- #
+#
+# C8 extends C4 from identity-inequality to context-separation (ESL v1.1 §5.4).
+# It ONLY evaluates when status is verified/archived AND a verify.envelope.json
+# sidecar is present in the change folder -- no envelope means no attestation
+# to check yet, so C8 produces NO record at all (skip, not fail). When the
+# envelope exists, it MAY carry an `ise.verification` sub-block
+# {fresh_context, checker, transcript_access} (a forward reference to an
+# anticipated ECL extension -- see spec §5.4's caveat). C8 warns if the
+# sub-block is absent, or if fresh_context != true, transcript_access is not
+# one of {none, artifact-only}, or the sub-block's checker == change.json.maker.
+# A C8 fail NEVER changes the exit code (only C1-C6 MUST checks can block).
+VERIFY_ENVELOPE="$TARGET_ABS/verify.envelope.json"
+if [ "$CHANGE_JSON_OK" -eq 1 ] && [ -f "$VERIFY_ENVELOPE" ]; then
+  case "$M_STATUS" in
+    verified|archived)
+      if ! jq empty "$VERIFY_ENVELOPE" >/dev/null 2>&1; then
+        : # malformed envelope already reported by C6; nothing reliable to read
+      else
+        ISE_PRESENT="$(jq -r 'if (.ise.verification? != null) then "1" else "0" end' "$VERIFY_ENVELOPE" 2>/dev/null)"
+        if [ "$ISE_PRESENT" != "1" ]; then
+          esl_record "C8" "SHOULD" "fail" "fresh_context_verification_attested" \
+            "ise.verification sub-block absent (advisory; SHOULD be present at verified/archived)"
+        else
+          ISE_FRESH="$(jq -r 'if .ise.verification.fresh_context == true then "true" elif .ise.verification.fresh_context == false then "false" else "" end' "$VERIFY_ENVELOPE" 2>/dev/null)"
+          ISE_CHECKER="$(jget '.ise.verification.checker' "$VERIFY_ENVELOPE")"
+          ISE_TRANSCRIPT="$(jget '.ise.verification.transcript_access' "$VERIFY_ENVELOPE")"
+
+          C8_ISSUES=""
+          if [ "$ISE_FRESH" != "true" ]; then
+            C8_ISSUES="${C8_ISSUES}fresh_context!=true(got '${ISE_FRESH:-unset}') "
+          fi
+          case "$ISE_TRANSCRIPT" in
+            none|artifact-only) : ;;
+            *) C8_ISSUES="${C8_ISSUES}transcript_access invalid(got '${ISE_TRANSCRIPT:-unset}') " ;;
+          esac
+          if [ -z "$ISE_CHECKER" ]; then
+            C8_ISSUES="${C8_ISSUES}checker missing "
+          elif [ "$ISE_CHECKER" = "$M_MAKER" ]; then
+            C8_ISSUES="${C8_ISSUES}checker==maker('$M_MAKER') "
+          fi
+
+          if [ -n "$C8_ISSUES" ]; then
+            esl_record "C8" "SHOULD" "fail" "fresh_context_verification_attested" "${C8_ISSUES% }"
+          else
+            esl_record "C8" "SHOULD" "ok" "fresh_context_verification_attested" ""
+          fi
+        fi
+      fi ;;
+    *)
+      : # C8 only applies once verification is claimed (status verified/archived)
+      ;;
+  esac
 fi
 
 # -- summarise -------------------------------------------------------------- #

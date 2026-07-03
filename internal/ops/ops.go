@@ -49,6 +49,13 @@ type ProposeInput struct {
 	// reads it without a per-call flag. *bool: nil (unset) is "no-code default"
 	// without writing has_code; an explicit value is persisted.
 	HasCode *bool `json:"has_code,omitempty"`
+	// MemoryPreflightRan / MemoryPreflightRecords persist the OPTIONAL v1.1
+	// memory_preflight record (ESL §2.6, schema/change.v1.json) when BOTH are
+	// given — the schema requires ran+records together, so a caller supplying
+	// only one is a usage error. Leaving both nil omits the field entirely (the
+	// graceful-skip default: no memory MCP available / not yet adopted).
+	MemoryPreflightRan     *bool `json:"memory_preflight_ran,omitempty"`
+	MemoryPreflightRecords *int  `json:"memory_preflight_records,omitempty"`
 }
 
 // ProposeOutput is the propose result.
@@ -98,6 +105,12 @@ func Propose(in ProposeInput) (*ProposeOutput, error) {
 	if in.HasCode != nil {
 		hc := *in.HasCode
 		c.HasCode = &hc
+	}
+	if in.MemoryPreflightRan != nil || in.MemoryPreflightRecords != nil {
+		if in.MemoryPreflightRan == nil || in.MemoryPreflightRecords == nil {
+			return nil, fmt.Errorf("memory_preflight_ran and memory_preflight_records must both be given together")
+		}
+		c.MemoryPreflight = &manifest.MemoryPreflight{Ran: *in.MemoryPreflightRan, Records: *in.MemoryPreflightRecords}
 	}
 	p, err := manifest.Write(dir, c)
 	if err != nil {
@@ -389,6 +402,9 @@ func mergeChange(base, patch *manifest.Change) {
 	}
 	if patch.HasCode != nil {
 		base.HasCode = patch.HasCode
+	}
+	if patch.MemoryPreflight != nil {
+		base.MemoryPreflight = patch.MemoryPreflight
 	}
 }
 

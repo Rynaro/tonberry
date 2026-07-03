@@ -1,0 +1,49 @@
+{
+  "envelope_version": "1.0",
+  "message_id": "00000000-0000-4000-8000-0000000000c9",
+  "thread_id": "00000000-0000-4000-8000-0000000000c9",
+  "parent_id": null,
+  "from": {
+    "eidolon": "kupo-verifier",
+    "version": "1.0.0"
+  },
+  "to": {
+    "eidolon": "orchestrator",
+    "version": "1.0"
+  },
+  "performative": "INFORM",
+  "edge_origin": "roster",
+  "objective": "VIOLATING-FOR-C8 (advisory only): manifest-level maker!=checker holds (C4 ok), but the attestation reveals the actual review was NOT fresh-context — same identity as maker, prior-session transcript reused.",
+  "artifact": {
+    "kind": "edit-proposal",
+    "schema_version": "1.0",
+    "path": "change.json",
+    "sha256": "PARENT_FILLS_SHA256",
+    "size_bytes": "PARENT_FILLS_SIZE"
+  },
+  "context_delta": {
+    "token_budget": 1000,
+    "tokens_used": 40,
+    "input_handles": [],
+    "summary": "C8 warning control: fresh_context=false AND ise.verification.checker(vivi)==maker(vivi), despite change.json.checker=kupo-verifier and from.eidolon=kupo-verifier satisfying C4."
+  },
+  "constraints": {
+    "trust_level": "standard"
+  },
+  "integrity": {
+    "method": "sha256",
+    "value": "PARENT_FILLS_SHA256"
+  },
+  "ise": {
+    "verification": {
+      "fresh_context": false,
+      "checker": "vivi",
+      "transcript_access": "artifact-only"
+    }
+  },
+  "trace": {
+    "ts": "2026-07-02T12:05:00Z",
+    "host": "claude-code",
+    "tier": "standard"
+  }
+}

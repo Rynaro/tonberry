@@ -241,6 +241,82 @@ func TestProposePersistsHasCode(t *testing.T) {
 	}
 }
 
+// TestProposePersistsMemoryPreflight proves propose persists the OPTIONAL v1.1
+// memory_preflight record (ESL §2.6) only when BOTH ran and records are given,
+// including the ran:false/records:0 graceful-skip form; a change proposed
+// without either flag has no memory_preflight at all (nil, not zero-value).
+func TestProposePersistsMemoryPreflight(t *testing.T) {
+	root := t.TempDir()
+	ran := true
+	records := 3
+	if _, err := Propose(ProposeInput{
+		ProjectRoot: root, ChangeID: "preflight-recorded", Maker: "vivi", Checker: "vigil",
+		MemoryPreflightRan: &ran, MemoryPreflightRecords: &records,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c, err := manifest.Read(filepath.Join(root, ChangesRoot, "preflight-recorded"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.MemoryPreflight == nil || !c.MemoryPreflight.Ran || c.MemoryPreflight.Records != 3 {
+		t.Errorf("propose should persist memory_preflight{ran:true,records:3}, got %+v", c.MemoryPreflight)
+	}
+
+	// Graceful-skip form: ran:false, records:0 given together is a legal,
+	// explicit record — distinct from omitting the flags entirely.
+	noRan := false
+	zero := 0
+	if _, err := Propose(ProposeInput{
+		ProjectRoot: root, ChangeID: "preflight-skipped", Maker: "kupo", Checker: "vigil",
+		MemoryPreflightRan: &noRan, MemoryPreflightRecords: &zero,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c2, err := manifest.Read(filepath.Join(root, ChangesRoot, "preflight-skipped"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c2.MemoryPreflight == nil || c2.MemoryPreflight.Ran || c2.MemoryPreflight.Records != 0 {
+		t.Errorf("propose should persist memory_preflight{ran:false,records:0}, got %+v", c2.MemoryPreflight)
+	}
+
+	// Neither flag given: no memory_preflight at all (graceful-skip default).
+	if _, err := Propose(ProposeInput{ProjectRoot: root, ChangeID: "no-preflight", Maker: "vivi", Checker: "vigil"}); err != nil {
+		t.Fatal(err)
+	}
+	c3, err := manifest.Read(filepath.Join(root, ChangesRoot, "no-preflight"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c3.MemoryPreflight != nil {
+		t.Errorf("propose with neither memory_preflight flag should leave it nil, got %+v", c3.MemoryPreflight)
+	}
+}
+
+// TestProposeMemoryPreflightRequiresBothFields proves the schema's
+// additionalProperties:false + required:[ran,records] pairing is enforced at
+// the ops layer: giving only one of ran/records is a usage error, not a
+// silently-partial record.
+func TestProposeMemoryPreflightRequiresBothFields(t *testing.T) {
+	root := t.TempDir()
+	ran := true
+	if _, err := Propose(ProposeInput{
+		ProjectRoot: root, ChangeID: "half-preflight", Maker: "vivi", Checker: "vigil",
+		MemoryPreflightRan: &ran,
+	}); err == nil {
+		t.Errorf("propose with only memory_preflight_ran (no records) should error")
+	}
+
+	records := 2
+	if _, err := Propose(ProposeInput{
+		ProjectRoot: root, ChangeID: "half-preflight-2", Maker: "vivi", Checker: "vigil",
+		MemoryPreflightRecords: &records,
+	}); err == nil {
+		t.Errorf("propose with only memory_preflight_records (no ran) should error")
+	}
+}
+
 // -- FIX 2: persist-by-default for transition / right_size / drift_check ----- //
 
 // TestTransitionPersistsByDefault: a transition with no --write_manifest now

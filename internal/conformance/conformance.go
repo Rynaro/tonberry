@@ -3,11 +3,12 @@
 //
 // THE PARITY INVARIANT (FORGE Decision 2 — LOAD-BEARING): for every change-folder
 // input, `tonberry verify` (this package) and `bash esl-conformance.sh` MUST
-// agree on the checks C1–C6 (MUST) and C7 (SHOULD, the advisory EARS lint) — ids,
-// MUST/SHOULD level, ok/fail verdict, and semantics — the exit codes (0/1/3; 2
-// reserved), and the --json shape. C7 is advisory: a C7-only failure NEVER changes
-// the exit code (only the MUST checks C1–C6 block), in BOTH the bash oracle and
-// this port. The bash checker is AUTHORITATIVE on any divergence; a divergence is a
+// agree on the checks C1–C6 (MUST) and C7/C8 (SHOULD, the advisory EARS lint and
+// the fresh-context verification attestation) — ids, MUST/SHOULD level, ok/fail
+// verdict, and semantics — the exit codes (0/1/3; 2 reserved), and the --json
+// shape. C7/C8 are advisory: a C7- or C8-only failure NEVER changes the exit code
+// (only the MUST checks C1–C6 block), in BOTH the bash oracle and this port. The
+// bash checker is AUTHORITATIVE on any divergence; a divergence is a
 // release-blocking reversal condition. parity/esl-conformance.sh is the vendored
 // oracle and parity_test.go is the locking gate.
 //
@@ -27,10 +28,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // CheckerVersion mirrors ESL_CHECKER_VERSION in esl-conformance.sh.
-const CheckerVersion = "1.0.0"
+const CheckerVersion = "1.1.0"
 
 // eclPerformatives is the closed ECL v1.0 ten-performative set, vendored as a
 // constant from esl-conformance.sh:36 (ESL_ECL_PERFORMATIVES). A REFERENCE to
@@ -297,10 +299,80 @@ func Check(targetAbs string, mode Mode) Report {
 		}
 	}
 
+	// -- Check 8: fresh-context verification attestation (SHOULD, NEW in v1.1) //
+	//
+	// C8 extends C4 from identity-inequality to context-separation (ESL v1.1
+	// §5.4), a faithful port of esl-conformance.sh's C8. It ONLY evaluates when
+	// status is verified/archived AND a verify.envelope.json sidecar is present
+	// in the change folder -- no envelope means no attestation to check yet, so
+	// C8 produces NO record at all (skip, not fail). A malformed envelope is
+	// already reported by C6; C8 also produces no record in that case (nothing
+	// reliable to read). When the envelope exists and parses, it MAY carry an
+	// `ise.verification` sub-block {fresh_context, checker, transcript_access}
+	// (a forward reference to an anticipated ECL extension -- see spec §5.4's
+	// caveat). C8 warns if the sub-block is absent, or if fresh_context != true,
+	// transcript_access is not one of {none, artifact-only}, or the sub-block's
+	// checker == change.json.maker. A C8 fail NEVER changes the exit code (only
+	// C1-C6 MUST checks can block) -- see the blockingFail split below.
+	if changeOK && (mStatus == "verified" || mStatus == "archived") {
+		vePath := filepath.Join(targetAbs, "verify.envelope.json")
+		if fileExists(vePath) {
+			if vd, err := os.ReadFile(vePath); err == nil {
+				var vm map[string]any
+				if validJSONObject(vd, &vm) {
+					iseObj, isePresent := iseVerification(vm)
+					if !isePresent {
+						rec.record("C8", "SHOULD", "fail", "fresh_context_verification_attested",
+							"ise.verification sub-block absent (advisory; SHOULD be present at verified/archived)")
+					} else {
+						fresh := ""
+						if v, ok := iseObj["fresh_context"]; ok {
+							fresh = boolTriState(v)
+						}
+						checker := jget(iseObj, "checker")
+						transcript := jget(iseObj, "transcript_access")
+
+						var issues []string
+						if fresh != "true" {
+							got := fresh
+							if got == "" {
+								got = "unset"
+							}
+							issues = append(issues, fmt.Sprintf("fresh_context!=true(got '%s')", got))
+						}
+						switch transcript {
+						case "none", "artifact-only":
+							// ok
+						default:
+							got := transcript
+							if got == "" {
+								got = "unset"
+							}
+							issues = append(issues, fmt.Sprintf("transcript_access invalid(got '%s')", got))
+						}
+						if checker == "" {
+							issues = append(issues, "checker missing")
+						} else if checker == mMaker {
+							issues = append(issues, fmt.Sprintf("checker==maker('%s')", mMaker))
+						}
+
+						if len(issues) > 0 {
+							rec.record("C8", "SHOULD", "fail", "fresh_context_verification_attested", strings.Join(issues, " "))
+						} else {
+							rec.record("C8", "SHOULD", "ok", "fresh_context_verification_attested", "")
+						}
+					}
+				}
+				// else: malformed envelope, already reported by C6; no C8 record.
+			}
+			// else: unreadable file; no C8 record (matches the bash `jq empty` failure path).
+		}
+	}
+
 	// -- summarise ---------------------------------------------------------- //
 	// hasFail reflects any fail (human "warnings present"); blockingFail is the
-	// exit-code lever — ONLY MUST-level fails block. A SHOULD-level fail (C7 —
-	// advisory EARS lint) never changes the exit code.
+	// exit-code lever — ONLY MUST-level fails block. A SHOULD-level fail (C7/C8 —
+	// advisory EARS lint / fresh-context attestation) never changes the exit code.
 	hasFail := false
 	blockingFail := false
 	for _, r := range rec.results {
@@ -365,6 +437,17 @@ func driftTriState(m map[string]any) string {
 	if !ok {
 		return ""
 	}
+	return boolTriState(v)
+}
+
+// boolTriState replicates the bash tri-state pattern used for both
+// drift_checked and ise.verification.fresh_context:
+//
+//	jq -r 'if .x == true then "true" elif .x == false then "false" else "" end'
+//
+// i.e. JSON true -> "true", JSON false -> "false", anything else (missing,
+// null, non-bool) -> "".
+func boolTriState(v any) string {
 	b, isBool := v.(bool)
 	if !isBool {
 		return ""
@@ -373,6 +456,28 @@ func driftTriState(m map[string]any) string {
 		return "true"
 	}
 	return "false"
+}
+
+// iseVerification replicates the bash jq filter
+// `.ise.verification? != null` used to gate C8: it returns the
+// ise.verification sub-object and true iff .ise is an object AND its
+// "verification" key exists and is not JSON null. If "verification" is
+// present but is not itself a JSON object (an edge case no known fixture
+// exercises), the second return is still true (mirroring `!= null`) but the
+// returned map is nil, so subsequent jget/boolTriState reads on it come back
+// empty/"" — matching jq's behavior of a failed (and suppressed) index
+// expression yielding an empty capture.
+func iseVerification(vm map[string]any) (map[string]any, bool) {
+	ise, ok := vm["ise"].(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	v, exists := ise["verification"]
+	if !exists || v == nil {
+		return nil, false
+	}
+	obj, _ := v.(map[string]any)
+	return obj, true
 }
 
 // acceptanceCount replicates:
