@@ -178,6 +178,24 @@ docker run --rm -v "$PROJECT_ROOT":/workspace -w /workspace \
   ghcr.io/rynaro/tonberry@<digest> verify .spectra/changes/<id> --mode block
 ```
 
+#### SELinux-enforcing hosts
+
+Without a label option, a bind-mounted workspace stays labeled `user_home_t`
+and container writes fail with a bare `EACCES` (`propose`, `right_size`,
+`transition`, `archive`, `compose_*`) while reads (`list`/`status`/`verify`)
+keep working — a confusing asymmetric failure. Fix it by adding `:z` to the
+volume flag:
+
+```sh
+-v "$PROJECT_ROOT":/workspace:z
+```
+
+Docker relabels the tree shared (`container_file_t`); `:z` is inert on
+non-SELinux hosts (macOS, default Ubuntu), so it is safe to include by
+default. `--security-opt label=disable` is the alternative when relabeling is
+undesirable. tonberry itself now detects an SELinux-enforcing host and
+appends this hint to permission-denied write errors.
+
 The ECL envelope stamp defaults to `envelope_version: "1.0"` (matching the
 eidolons-esl examples) and is overridable via `TONBERRY_ECL_ENVELOPE_VERSION` or
 the `--envelope_version` flag — tonberry tracks the ecosystem stamp, it does not

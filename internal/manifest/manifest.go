@@ -14,6 +14,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+
+	"github.com/Rynaro/tonberry/internal/fsdiag"
 )
 
 // ESLVersion is the ESL document version this build targets (the ESL_VERSION stamp).
@@ -207,7 +209,7 @@ func Read(changeDir string) (*Change, error) {
 // The directory is created if absent.
 func Write(changeDir string, c *Change) (string, error) {
 	if err := os.MkdirAll(changeDir, 0o755); err != nil {
-		return "", fmt.Errorf("mkdir %s: %w", changeDir, err)
+		return "", fmt.Errorf("mkdir %s: %w", changeDir, fsdiag.Explain(err, changeDir))
 	}
 	p := ManifestPath(changeDir)
 	data, err := MarshalIndent(c)
@@ -215,7 +217,7 @@ func Write(changeDir string, c *Change) (string, error) {
 		return "", err
 	}
 	if err := os.WriteFile(p, data, 0o644); err != nil {
-		return "", fmt.Errorf("write %s: %w", p, err)
+		return "", fmt.Errorf("write %s: %w", p, fsdiag.Explain(err, p))
 	}
 	return p, nil
 }
