@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Rynaro/tonberry/internal/envelope"
+	"github.com/Rynaro/tonberry/internal/fsdiag"
 	"github.com/Rynaro/tonberry/internal/manifest"
 )
 
@@ -70,7 +71,7 @@ func Archive(changeDir, date string, envVersionOverride string) (*Result, error)
 	// atomic within a filesystem; fall back to copy+remove only if Rename fails
 	// (e.g. a cross-device move). The active change folder must not survive.
 	if err := os.MkdirAll(archiveRoot, 0o755); err != nil {
-		return nil, fmt.Errorf("mkdir archive root %s: %w", archiveRoot, err)
+		return nil, fmt.Errorf("mkdir archive root %s: %w", archiveRoot, fsdiag.Explain(err, archiveRoot))
 	}
 	if _, err := os.Stat(snapDir); err == nil {
 		return nil, fmt.Errorf("archive target already exists: %s", snapDir)

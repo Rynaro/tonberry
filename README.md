@@ -178,6 +178,23 @@ docker run --rm -v "$PROJECT_ROOT":/workspace -w /workspace \
   ghcr.io/rynaro/tonberry@<digest> verify .spectra/changes/<id> --mode block
 ```
 
+#### Host-owned workspaces (container UID)
+
+The tonberry image runs as distroless nonroot **UID 65532**. A host workspace
+owned by your own UID (e.g. `1000`) at the common `0755` mode grants `o+rx` —
+reads succeed — but no `o+w`, so write ops (`propose`, `transition`, `archive`,
+`compose_*`) fail with `EACCES` while reads keep working, a confusing
+asymmetry. Fix it by running the container as the mount owner:
+
+```sh
+docker run --rm -i --user "$(id -u):$(id -g)" \
+  -v "$PROJECT_ROOT":/workspace -w /workspace \
+  ghcr.io/rynaro/tonberry@<digest> serve
+```
+
+(or `chown` the workspace to `65532`). tonberry now surfaces this as a hint —
+naming both UIDs — appended to the `permission denied` error on a failed write.
+
 The ECL envelope stamp defaults to `envelope_version: "1.0"` (matching the
 eidolons-esl examples) and is overridable via `TONBERRY_ECL_ENVELOPE_VERSION` or
 the `--envelope_version` flag — tonberry tracks the ecosystem stamp, it does not
