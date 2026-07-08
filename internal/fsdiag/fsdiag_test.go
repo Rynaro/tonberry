@@ -53,7 +53,12 @@ func TestExplainNonPermissionErrorPassesThroughUnchanged(t *testing.T) {
 func TestExplainAppendsSELinuxHintWhenEnforcing(t *testing.T) {
 	withEnforcePath(t, writeEnforceFile(t, "1"))
 
-	path := "/workspace/.spectra/changes/foo"
+	// A path under a user-owned temp dir: the ownership detector resolves the
+	// nearest existing ancestor (the temp dir, owned by this test process) and
+	// stays silent, isolating the SELinux dimension under test. (A fake path like
+	// /workspace/... would walk up to root and draw a UID-mismatch hint once the
+	// ownership detector is also registered.)
+	path := filepath.Join(t.TempDir(), ".spectra", "changes", "foo")
 	err := Explain(permissionErr(path), path)
 	if err == nil {
 		t.Fatal("Explain returned nil, want a wrapped permission error")
@@ -73,7 +78,12 @@ func TestExplainAppendsSELinuxHintWhenEnforcing(t *testing.T) {
 func TestExplainNoHintWhenNotEnforcing(t *testing.T) {
 	withEnforcePath(t, writeEnforceFile(t, "0"))
 
-	path := "/workspace/.spectra/changes/foo"
+	// A path under a user-owned temp dir: the ownership detector resolves the
+	// nearest existing ancestor (the temp dir, owned by this test process) and
+	// stays silent, isolating the SELinux dimension under test. (A fake path like
+	// /workspace/... would walk up to root and draw a UID-mismatch hint once the
+	// ownership detector is also registered.)
+	path := filepath.Join(t.TempDir(), ".spectra", "changes", "foo")
 	orig := permissionErr(path)
 	got := Explain(orig, path)
 	if got.Error() != orig.Error() {
@@ -84,7 +94,12 @@ func TestExplainNoHintWhenNotEnforcing(t *testing.T) {
 func TestExplainNoHintWhenEnforcePathMissing(t *testing.T) {
 	withEnforcePath(t, filepath.Join(t.TempDir(), "does-not-exist"))
 
-	path := "/workspace/.spectra/changes/foo"
+	// A path under a user-owned temp dir: the ownership detector resolves the
+	// nearest existing ancestor (the temp dir, owned by this test process) and
+	// stays silent, isolating the SELinux dimension under test. (A fake path like
+	// /workspace/... would walk up to root and draw a UID-mismatch hint once the
+	// ownership detector is also registered.)
+	path := filepath.Join(t.TempDir(), ".spectra", "changes", "foo")
 	orig := permissionErr(path)
 	got := Explain(orig, path)
 	if got.Error() != orig.Error() {

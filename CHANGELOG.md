@@ -3,6 +3,39 @@
 All notable changes to **tonberry** are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses SemVer.
 
+## [0.5.2] — 2026-07-07
+
+**Diagnose container-UID vs host-owner write failures (`tonberry#4`).**
+Containerized write ops (`propose`, `transition`, `archive`, `compose_*`) were
+observed failing with a bare `permission denied` while read ops kept
+succeeding. A controlled experiment (holding the `:z` mount + all other flags
+constant, varying only `--user`) isolated the cause: the tonberry image runs
+as distroless-nonroot **UID 65532**, and a bind-mounted host workspace is
+typically owned by the host user (e.g. **UID 1000**) at mode `0755` — granting
+`o+rx` (reads succeed) but no write. This is a **DAC/UID** cause, distinct from
+the SELinux/MAC labeling cause tracked separately (`tonberry#3`).
+
+### Added
+
+- **`internal/fsdiag`** — a new diagnostic seam. `fsdiag.Explain(err, path)`
+  passes non-permission errors through unchanged; for a permission error
+  (`EACCES`/`EPERM`, detected via `errors.Is(err, fs.ErrPermission)`) it runs a
+  registry of `Detector`s and appends any non-empty hints to the wrapped
+  error.
+- **Ownership detector** (`internal/fsdiag/ownership.go`) — fires when the
+  process euid differs from the owning UID of the nearest existing ancestor
+  of the failed write path (the failing leaf, e.g. a not-yet-created
+  `.spectra/changes/<id>/`, usually doesn't exist yet). The rendered hint
+  names both UIDs and tells the operator to re-run the container as the mount
+  owner (`--user "$(id -u):$(id -g)"`) or `chown` the workspace. The
+  UID-comparison core (`ownershipHintFor`) is a pure function, unit-tested
+  without requiring root.
+- **Wired into the three write choke points**: `manifest.Write`'s `mkdir` +
+  `change.json` write, and `archive.Archive`'s archive-root `mkdir`, now route
+  their permission errors through `fsdiag.Explain` before returning.
+- **README** — new "Host-owned workspaces (container UID)" subsection under
+  `### Container` explaining the UID-65532-vs-host-owner mismatch and the
+  `--user "$(id -u):$(id -g)"` fix.
 ## [0.5.1] — 2026-07-07
 
 **SELinux-label write-failure diagnostic (tonberry#3).** On an
