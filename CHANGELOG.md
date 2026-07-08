@@ -36,6 +36,34 @@ the SELinux/MAC labeling cause tracked separately (`tonberry#3`).
 - **README** — new "Host-owned workspaces (container UID)" subsection under
   `### Container` explaining the UID-65532-vs-host-owner mismatch and the
   `--user "$(id -u):$(id -g)"` fix.
+## [0.5.1] — 2026-07-07
+
+**SELinux-label write-failure diagnostic (tonberry#3).** On an
+SELinux-enforcing host, a workspace bind mount without a `:z`/`:Z` label
+option stays labeled `user_home_t`; `container_t` can read the tree but every
+write is denied (`EACCES`), so `propose`, `right_size` (persist),
+`transition`, `archive`, and `compose_*` fail with a bare "permission denied"
+while `list`/`status`/`verify` keep working — a quietly asymmetric failure
+that was expensive to diagnose from the MCP client side.
+
+### Added
+
+- **`internal/fsdiag`** — a diagnostic seam that turns a bare filesystem
+  permission error into an actionable hint. `fsdiag.Explain(err, path)`
+  passes non-permission (and nil) errors through unchanged; on a permission
+  error it runs the registered `Detector`s and appends any non-empty hints to
+  the wrapped error.
+- **SELinux detector** (`internal/fsdiag/selinux.go`) — fires only when the
+  host's SELinux policy is actually enforcing (`/sys/fs/selinux/enforce` ==
+  `"1"`; absent/unreadable == not applicable, so the hint is silent on
+  non-SELinux hosts). When it fires, the hint tells the operator to add `:z`
+  to the volume flag (`-v <path>:/workspace:z`) so Docker relabels the tree
+  shared (`container_file_t`), or to use `--security-opt label=disable`.
+- Wired `fsdiag.Explain` into the three write choke points that were failing
+  silently: `internal/manifest.Write` (mkdir + write change.json) and
+  `internal/archive.Archive` (mkdir archive root).
+- **README** — new "SELinux-enforcing hosts" subsection under `### Container`
+  documenting the `:z` workaround and the new hint behavior.
 
 ## [0.5.0] — 2026-07-03
 
