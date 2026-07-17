@@ -3,6 +3,40 @@
 All notable changes to **tonberry** are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses SemVer.
 
+## [0.5.3] — 2026-07-17
+
+**C2a failure-detail diagnostic for a non-canonical `stage` field (`tonberry#9`).**
+The `ariramba` project's local schema (`ariramba/esl-change.compat.v1`) stores
+its lifecycle state under a top-level `stage` field, not the ESL-owned
+top-level `status` field the canonical `change.v1` schema requires. Reading
+such a manifest, tonberry observed the absent `status` as empty and C2a
+failed with the cryptic `illegal status: ''`, giving the caller no signal
+about *why* — `list` also just showed `status: ""`. This is DIAGNOSTIC ONLY:
+tonberry does **not** adopt or alias `stage` as a status (ESL anti-scope
+§1.3) — a `stage`-only manifest still, correctly, FAILS C2a.
+
+### Changed
+
+- **`internal/conformance`** — when C2a's `status` value is empty/absent, the
+  failure detail now inspects the already-parsed manifest for a top-level
+  `stage` key. If present, the detail names the missing `status` field,
+  surfaces the found `stage` value, and states the canonical requirement
+  (`illegal status: '' — no top-level 'status' field; found non-canonical
+  'stage'='<value>'. ESL change.v1 requires a top-level 'status'
+  (proposed|deliberated|in_progress|verified|archived); this manifest looks
+  like a non-canonical compat schema and must be migrated.`). If `stage` is
+  also absent, the detail still names the missing field explicitly
+  (`illegal status: '' — no top-level 'status' field`). A NON-EMPTY illegal
+  status (e.g. `"in-review"`) is unaffected — the message shape stays exactly
+  `illegal status: '<value>'` as before. The verdict (C2a fail) and the
+  bash-oracle parity gate (id/status/exit-code) are unchanged; the parity
+  gate never compares the `reason` text, so this enrichment is a
+  Go-side-only diagnostic improvement.
+- New fixture `fixtures/failing/stage-not-status/` exercises this case for
+  both the unit test and the parity gate.
+
+Closes #9.
+
 ## [0.5.2] — 2026-07-07
 
 **Diagnose container-UID vs host-owner write failures (`tonberry#4`).**

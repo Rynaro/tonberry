@@ -127,6 +127,39 @@ func nestedFromEidolon(m map[string]any) string {
 	return jget(from, "eidolon")
 }
 
+// illegalStatusDetail builds the C2a failure detail (esl-conformance.sh:167
+// parity: the bash oracle emits the single shape `illegal status: '$M_STATUS'`
+// in every case, and the parity gate (parity_test.go) only compares {id,status}
+// pairs — never the reason text — so enriching the Go-side detail below is not
+// a parity divergence).
+//
+// For a NON-EMPTY but illegal status (e.g. "in-review") this keeps that exact
+// original shape unchanged, so existing fixtures/tests are unaffected.
+//
+// For an EMPTY/absent status this adds a DIAGNOSTIC-ONLY detail naming the
+// missing field explicitly, and — per Rynaro/tonberry#9 — additionally
+// inspects the already-parsed raw manifest map for a non-canonical top-level
+// `stage` key (the shape observed in the `ariramba/esl-change.compat.v1`
+// project schema, which is NOT the ESL-owned change.v1 schema). This is
+// diagnostic only: tonberry does NOT read `stage` as a status value anywhere
+// else, and the verdict stays "fail" either way — ESL anti-scope §1.3
+// forbids tonberry from adopting or aliasing a non-canonical field into the
+// ESL-owned status enum.
+func illegalStatusDetail(m map[string]any, mStatus string) string {
+	if mStatus != "" {
+		return fmt.Sprintf("illegal status: '%s'", mStatus)
+	}
+	if stage := jget(m, "stage"); stage != "" {
+		return fmt.Sprintf(
+			"illegal status: '' — no top-level 'status' field; found non-canonical 'stage'='%s'. "+
+				"ESL change.v1 requires a top-level 'status' (proposed|deliberated|in_progress|verified|archived); "+
+				"this manifest looks like a non-canonical compat schema and must be migrated.",
+			stage,
+		)
+	}
+	return "illegal status: '' — no top-level 'status' field"
+}
+
 // Check runs the six mechanical checks against a change folder and returns the
 // Report. It NEVER returns a usage error itself — the caller (verify command)
 // validates the target exists and is a directory and emits the usage exit 1.
@@ -163,7 +196,7 @@ func Check(targetAbs string, mode Mode) Report {
 		case "proposed", "deliberated", "in_progress", "verified", "archived":
 			rec.record("C2a", "MUST", "ok", "status_enum_legal", "")
 		default:
-			rec.record("C2a", "MUST", "fail", "status_enum_legal", fmt.Sprintf("illegal status: '%s'", mStatus))
+			rec.record("C2a", "MUST", "fail", "status_enum_legal", illegalStatusDetail(m, mStatus))
 		}
 		switch mTier {
 		case "trivial", "lite", "full":

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -235,6 +236,38 @@ func TestC2aIllegalStatus(t *testing.T) {
 	}
 	if rep.ExitCode != 3 {
 		t.Errorf("illegal-status block exit = %d, want 3", rep.ExitCode)
+	}
+	// The NON-EMPTY illegal-status shape must stay exactly as before
+	// (bash-oracle parity: esl-conformance.sh:167 emits this same shape).
+	if want := "illegal status: 'in-review'"; r.Reason != want {
+		t.Errorf("illegal-status: C2a reason = %q, want %q (unchanged shape)", r.Reason, want)
+	}
+}
+
+// TestC2aMissingStatusWithStagePresent is the LOAD-BEARING diagnostic proof
+// for Rynaro/tonberry#9: a manifest using the non-canonical
+// ariramba/esl-change.compat.v1 shape (top-level `stage`, NO top-level
+// `status`) must still FAIL C2a — tonberry never adopts/aliases `stage` as a
+// status (ESL anti-scope §1.3), the verdict is unchanged — but the failure
+// detail must now name the missing `status` field AND flag the non-canonical
+// `stage` field, instead of the old opaque `illegal status: ”`.
+func TestC2aMissingStatusWithStagePresent(t *testing.T) {
+	rep := checkFixture(t, "failing", "stage-not-status", ModeBlock)
+	r, ok := findResult(rep, "C2a")
+	if !ok || r.Status != "fail" {
+		t.Fatalf("stage-not-status: expected C2a fail (verdict unchanged), got %+v", rep.Results)
+	}
+	if rep.ExitCode != 3 {
+		t.Errorf("stage-not-status block exit = %d, want 3", rep.ExitCode)
+	}
+	if !strings.Contains(r.Reason, "stage") {
+		t.Errorf("stage-not-status: C2a reason should mention 'stage', got %q", r.Reason)
+	}
+	if !strings.Contains(r.Reason, "status") {
+		t.Errorf("stage-not-status: C2a reason should mention the canonical 'status' requirement, got %q", r.Reason)
+	}
+	if !strings.Contains(r.Reason, "in_progress") {
+		t.Errorf("stage-not-status: C2a reason should surface the found stage value, got %q", r.Reason)
 	}
 }
 

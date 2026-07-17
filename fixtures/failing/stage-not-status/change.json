@@ -1,0 +1,12 @@
+{
+  "esl_version": "1.0",
+  "change_id": "stage-not-status",
+  "stage": "in_progress",
+  "tier": "lite",
+  "maker": "vivi",
+  "checker": "kupo-verifier",
+  "acceptance_checks": [
+    { "id": "AC-1", "verify_method": "n/a — violating fixture (C2a: no top-level status, non-canonical 'stage' present)" }
+  ],
+  "spec_ref": "spec.md"
+}
