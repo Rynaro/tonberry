@@ -28,7 +28,7 @@ import (
 )
 
 // Version is the tonberry build/release version.
-const Version = "0.5.2"
+const Version = "0.5.3"
 
 func main() {
 	if len(os.Args) < 2 {
